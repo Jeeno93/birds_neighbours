@@ -1,0 +1,11 @@
+meta:
+  environment: nodejs
+  toolVersion: "20"
+build:
+  installDependencies: true
+  buildDirectory: artifacts/pernatye-sosedi-api
+  buildCommand: npm run build
+run:
+  runCommand: node dist/index.js
+  persistentStorage:
+    - /data

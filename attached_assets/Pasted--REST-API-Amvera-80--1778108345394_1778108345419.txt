@@ -1,0 +1,237 @@
+Создай REST API бэкенд для приложения «Пернатые соседи». Бэкенд будет задеплоен на Amvera (порт 80), база данных — PostgreSQL на Amvera.
+Структура проекта
+Создай папку artifacts/pernatye-sosedi-api/ со следующей структурой:
+artifacts/pernatye-sosedi-api/
+├── src/
+│   ├── index.ts
+│   ├── db.ts
+│   ├── routes/
+│   │   ├── users.ts
+│   │   ├── birds.ts
+│   │   ├── requests.ts
+│   │   └── reviews.ts
+│   └── middleware/
+│       └── auth.ts
+├── migrations/
+│   └── 001_init.sql
+├── amvera.yml
+├── package.json
+└── tsconfig.json
+package.json
+json{
+  "name": "pernatye-sosedi-api",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev src/index.ts"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/pg": "^8.10.9",
+    "@types/cors": "^2.8.17",
+    "typescript": "^5.3.3",
+    "ts-node-dev": "^2.0.0"
+  }
+}
+tsconfig.json
+json{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}
+amvera.yml
+yamlmeta:
+  environment: nodejs
+  toolVersion: "20"
+build:
+  installDependencies: true
+  buildDirectory: artifacts/pernatye-sosedi-api
+  buildCommand: npm run build
+run:
+  runCommand: node dist/index.js
+  persistentStorage:
+    - /data
+migrations/001_init.sql
+sqlCREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  telegram_id TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  photo_url TEXT,
+  city TEXT NOT NULL DEFAULT 'Москва',
+  district TEXT NOT NULL DEFAULT 'Центр',
+  lat FLOAT,
+  lng FLOAT,
+  experience_years INT NOT NULL DEFAULT 0,
+  help_status TEXT NOT NULL DEFAULT 'ready',
+  sit_types TEXT[] DEFAULT '{}',
+  capabilities TEXT[] DEFAULT '{}',
+  other_pets JSONB DEFAULT '[]',
+  rating FLOAT NOT NULL DEFAULT 0,
+  reviews_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS birds (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  species TEXT NOT NULL,
+  name TEXT NOT NULL,
+  photo_url TEXT,
+  age_months INT,
+  food TEXT DEFAULT '',
+  schedule TEXT DEFAULT '',
+  diseases TEXT[] DEFAULT '{}',
+  medications TEXT DEFAULT '',
+  catch_notes TEXT DEFAULT '',
+  vet_notes TEXT DEFAULT '',
+  sit_location TEXT DEFAULT 'flexible',
+  was_examined BOOLEAN DEFAULT FALSE,
+  vet_name TEXT,
+  vet_contact TEXT,
+  last_checkup_date TEXT,
+  medication_experience TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sit_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  birds JSONB NOT NULL DEFAULT '[]',
+  sit_type TEXT NOT NULL DEFAULT 'full',
+  date_from DATE NOT NULL,
+  date_to DATE NOT NULL,
+  district TEXT NOT NULL DEFAULT '',
+  comment TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tags TEXT[] DEFAULT '{}',
+  comment TEXT DEFAULT '',
+  rating INT NOT NULL DEFAULT 5,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+src/db.ts
+tsimport { Pool } from 'pg';
+import dotenv from 'dotenv';
+dotenv.config();
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: false,
+});
+src/middleware/auth.ts
+tsimport { Request, Response, NextFunction } from 'express';
+
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const userId = req.headers['x-user-id'] as string;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.userId = userId;
+  next();
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+    }
+  }
+}
+src/index.ts
+tsimport express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { pool } from './db';
+import usersRouter from './routes/users';
+import birdsRouter from './routes/birds';
+import requestsRouter from './routes/requests';
+import reviewsRouter from './routes/reviews';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 80;
+
+app.use(cors());
+app.use(express.json());
+
+app.use('/api/users', usersRouter);
+app.use('/api/birds', birdsRouter);
+app.use('/api/sit-requests', requestsRouter);
+app.use('/api/reviews', reviewsRouter);
+
+app.get('/health', (_, res) => res.json({ status: 'ok' }));
+
+async function start() {
+  await pool.connect();
+  console.log('Database connected');
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+start().catch(console.error);
+src/routes/users.ts — реализуй следующие endpoints:
+POST /api/users/auth — принимает { telegramId, name }. Ищет пользователя по telegram_id. Если не существует — создаёт с дефолтными значениями. Возвращает пользователя.
+GET /api/users — возвращает всех пользователей у которых help_status != 'not_now' и заполнены lat/lng. Query param city для фильтрации по городу.
+GET /api/users/:id — возвращает одного пользователя.
+PUT /api/users/:id — обновляет профиль. Принимает { name, district, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets, city }. Требует заголовок x-user-id совпадающий с :id.
+src/routes/birds.ts — реализуй:
+GET /api/birds?userId= — птицы пользователя.
+POST /api/birds — создать птицу. Требует x-user-id.
+PUT /api/birds/:id — обновить птицу. Требует x-user-id, проверяй что птица принадлежит пользователю.
+DELETE /api/birds/:id — удалить птицу. Требует x-user-id.
+src/routes/requests.ts — реализуй:
+GET /api/sit-requests?userId= — запросы пользователя.
+POST /api/sit-requests — создать запрос. Требует x-user-id.
+PUT /api/sit-requests/:id — обновить запрос. Требует x-user-id.
+PUT /api/sit-requests/:id/status — обновить только статус. Требует x-user-id.
+src/routes/reviews.ts — реализуй:
+GET /api/reviews?toUserId= — отзывы о пользователе.
+POST /api/reviews — создать отзыв. Требует x-user-id. После создания пересчитывай rating и reviews_count в таблице users:
+sqlUPDATE users SET 
+  rating = (SELECT AVG(rating) FROM reviews WHERE to_user_id = $1),
+  reviews_count = (SELECT COUNT(*) FROM reviews WHERE to_user_id = $1)
+WHERE id = $1
+После написания кода:
+
+Установи зависимости:
+
+bashcd artifacts/pernatye-sosedi-api && npm install
+
+Проверь компиляцию:
+
+bashnpm run build
+
+Создай .env для локального запуска:
+
+DATABASE_URL=postgresql://pernatye_user:пароль@amvera-almazkin93-cnpg-pernatyesosedi-db-rw:5432/pernatye_sosedi
+PORT=3000
+NODE_ENV=development
+
+Обнови корневой package.json монорепозитория — добавь скрипт для запуска API:
+
+json"api": "pnpm --filter pernatye-sosedi-api run dev"
+
+Создай DOCUMENTATION_API.md в папке artifacts/pernatye-sosedi-api/ с описанием всех endpoints, структуры БД и инструкцией по деплою на Amvera.
+
+Не трогай фронтенд — это только бэкенд. После завершения выведи краткий итог и результат компиляции.

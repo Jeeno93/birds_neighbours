@@ -1,0 +1,109 @@
+uploads = []
+
+[[generated]]
+id = "RP4RI6El1wbpx0w4Kq1eE"
+uri = "file://artifacts/pernatye-sosedi/assets/images/icon.png"
+type = "image"
+title = "bird app icon"
+
+[[generated]]
+id = "w_vL734V2MnXiyM8yS-pp"
+uri = "file://artifacts/pernatye-sosedi/assets/images/onboarding-welcome.png"
+type = "image"
+title = "birds neighborhood illustration"
+
+[[generated]]
+id = "ely4cNorkG60cRn7pGd7g"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_budgie.png"
+type = "image"
+title = "parrot_budgie"
+
+[[generated]]
+id = "dZ76YI97Gd6esXdvIjT2f"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_corella.png"
+type = "image"
+title = "parrot_corella"
+
+[[generated]]
+id = "ym0Ns253ArDMHg-4IRIU0"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_lovebird.png"
+type = "image"
+title = "parrot_lovebird"
+
+[[generated]]
+id = "59cHilkZYc5xgDc9WF1Zp"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_rosella.png"
+type = "image"
+title = "parrot_rosella"
+
+[[generated]]
+id = "INuHnKKE8cerwgCJkxWUW"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_amazon.png"
+type = "image"
+title = "parrot_amazon"
+
+[[generated]]
+id = "wKfvB89D-_w_CmvSAs3t2"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_jaco.png"
+type = "image"
+title = "parrot_jaco"
+
+[[generated]]
+id = "RxTdEfoaKMqhXABdE6SMP"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_ara.png"
+type = "image"
+title = "parrot_ara"
+
+[[generated]]
+id = "NfeGi6I9alrBCQKcH5_TT"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_kakadu.png"
+type = "image"
+title = "parrot_kakadu"
+
+[[generated]]
+id = "ZupP6WbPpAh7FRrpDGewv"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_eclectus.png"
+type = "image"
+title = "parrot_eclectus"
+
+[[generated]]
+id = "j_Zl1gOpCC8Zv-9ufGyCo"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parrot_alexandrine.png"
+type = "image"
+title = "parrot_alexandrine"
+
+[[generated]]
+id = "gJeopoExOgJjv5ZNRqwnn"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/parakeet_kakariki.png"
+type = "image"
+title = "parakeet_kakariki"
+
+[[generated]]
+id = "eX7Gw1Wf8LXsTDF5cR0Dg"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/canary.png"
+type = "image"
+title = "canary"
+
+[[generated]]
+id = "doKeVclQjKduJ_XN4jl8y"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/finch.png"
+type = "image"
+title = "finch"
+
+[[generated]]
+id = "3ln9t6PbEAHUZ0sesytp8"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/pigeon.png"
+type = "image"
+title = "pigeon"
+
+[[generated]]
+id = "CWBEjryKdJxOwx38mkoWW"
+uri = "file://artifacts/pernatye-sosedi/assets/images/birds/other.png"
+type = "image"
+title = "other"
+
+[[outputs]]
+id = "mQMnIQKxEuVaJHTaY4k2f"
+uri = "file://artifacts/pernatye-sosedi/DOCUMENTATION.md"
+type = "text"
+title = "Документация — Пернатые соседи"

@@ -1,0 +1,27 @@
+Исправь проблемы из QA-отчёта перед сборкой APK. Только то что указано ниже — ничего лишнего не добавляй.
+🔴 Критично — исправить обязательно:
+1. Добавь птиц для n7–n20 в app/neighbor/[id].tsx
+В константе MOCK_USER_BIRDS сейчас есть только записи для n1–n6. Добавь по одной птице для каждого из n7–n20. Виды возьми из MOCK_USER_BIRDS в app/(tabs)/map.tsx — там уже расписаны виды для всех 20 птичников, синхронизируй. У каждой птицы заполни: species, name, age_months. У половины добавь wasExamined: true и vetName.
+2. Кнопка «Редактировать» в app/bird/[id].tsx
+Маршрут /edit-bird/${id} не существует и даёт 404. Временное решение — скрой кнопку редактирования полностью (закомментируй или удали). Не создавай новый экран.
+🟠 Важно — исправить до демо:
+3. Экран редактирования профиля
+В app/settings.tsx кнопка «Редактировать профиль» сейчас показывает заглушку «Скоро». Создай простой экран app/edit-profile.tsx с тремя полями: имя, район (выпадающий список из MOSCOW_DISTRICTS), годы опыта (числовое поле). Кнопка «Сохранить» вызывает setCurrentUser с обновлёнными данными и возвращает на предыдущий экран. Из settings.tsx — router.push('/edit-profile').
+4. Telegram deep-link
+Во всех местах где открывается Telegram замени https://t.me/${telegramId} на:
+tsconst url = `tg://resolve?domain=${telegramId}`;
+Linking.canOpenURL(url).then(supported => {
+  Linking.openURL(supported ? url : `https://t.me/${telegramId}`);
+});
+5. Флicker онбординга
+В app/index.tsx измени логику редиректа: если isOnboarded === false — делай Redirect href="/onboarding" напрямую, не через табы. Показывай пустой экран (или null) пока AsyncStorage загружается, чтобы карта не мелькала.
+🟢 Незначительно — исправить для чистоты:
+6. Typecheck
+
+В hooks/useColors.ts исправь cast чтобы включал radius: number
+После скрытия кнопки редактирования птицы ошибка маршрута уйдёт сама
+
+7. Tautology в app/new-request.tsx
+Найди строку status: matchedNeighbors.length > 0 ? "open" : "open" и замени на просто status: "open".
+После всех исправлений:
+Запусти pnpm --filter @workspace/pernatye-sosedi run typecheck и убедись что ошибок нет. Обнови DOCUMENTATION.md и QA_REPORT.md — отметь все исправленные пункты как ✅.

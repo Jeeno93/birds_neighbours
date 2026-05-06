@@ -1,0 +1,53 @@
+Внеси следующие изменения в приложение «Пернатые соседи»:
+1. Добавь курицу в справочник видов
+В константу BirdSpecies добавь:
+tschicken = "chicken"
+В SPECIES_LABELS:
+tschicken: "Курица 🐓"
+В SPECIES_IMAGES — используй любую существующую заглушку как placeholder.
+2. Множественный выбор птиц в запросе на присмотр
+В app/new-request.tsx замени одиночный выбор птицы на мультиселект. Вместо одного bird_id — массив bird_ids: string[]. Показывай чекбоксы по списку птиц пользователя. Минимум одна птица должна быть выбрана для отправки запроса.
+Обнови тип SitRequest:
+tsbird_ids: string[]; // вместо bird_id: string
+Обнови AppContext.tsx — метод addSitRequest принимает bird_ids.
+3. Подсказка как добавлять
+На экране app/(tabs)/birds.tsx если список птиц пустой — показывай не просто пустой экран, а онбординг-подсказку:
+tsx<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+  <Text style={{ fontSize: 48 }}>🦜</Text>
+  <Text style={{ fontSize: 20, fontWeight: '600', color: colors.foreground,
+    marginTop: 16, textAlign: 'center' }}>
+    Добавь своих птиц
+  </Text>
+  <Text style={{ fontSize: 14, color: colors.mutedForeground,
+    marginTop: 8, textAlign: 'center' }}>
+    Нажми кнопку + в правом верхнем углу чтобы добавить первую птицу
+  </Text>
+  <View style={{ marginTop: 24, alignItems: 'center' }}>
+    <Text style={{ fontSize: 32 }}>👆</Text>
+    <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4 }}>
+      вот тут
+    </Text>
+  </View>
+</View>
+Также на экране app/(tabs)/map.tsx если запросов нет — аналогичная подсказка с объяснением как создать запрос на присмотр.
+4. Тип передержки
+Добавь новый тип:
+tstype SitType = "full" | "guest" | "medical_only";
+Константа с лейблами:
+tsconst SIT_TYPE_LABELS: Record<SitType, string> = {
+  full: "🏠 Полная передержка — птица живёт у вас",
+  guest: "🏡 Гостевой уход — приходить кормить и убирать",
+  medical_only: "💊 Только лечение — приходить давать лекарства",
+};
+В тип User добавь поле:
+tssitTypes?: SitType[]; // что готов делать
+В тип SitRequest добавь поле:
+tssitType: SitType; // что нужно хозяину
+На экране профиля app/(tabs)/profile.tsx — добавь секцию «Что я готов делать» с мультиселектом из SIT_TYPE_LABELS. Показывай сразу под статусом готовности помогать.
+На карточке соседа app/neighbor/[id].tsx — показывай иконки типов передержки которые он готов делать.
+На экране создания запроса app/new-request.tsx — добавь обязательный выбор типа передержки через радиокнопки из SIT_TYPE_LABELS. Это первый вопрос после выбора птиц.
+На экране поиска соседей — фильтруй по совместимости: если хозяин ищет medical_only, показывай только тех у кого есть medical_only в sitTypes.
+5. Увеличь versionCode до 8 в app.json.
+6. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+7. Обнови DOCUMENTATION.md — отрази все изменения.

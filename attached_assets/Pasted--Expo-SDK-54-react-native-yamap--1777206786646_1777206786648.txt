@@ -1,0 +1,71 @@
+Верни Яндекс Карты, но через совместимую с Expo SDK 54 версию. Предыдущая версия react-native-yamap падала при компиляции Kotlin.
+1. Удали текущие карты:
+bashnpm uninstall react-native-maps
+2. Установи конкретную совместимую версию yamap:
+bashnpm install react-native-yamap@3.5.0
+3. В android/build.gradle (создай файл artifacts/pernatye-sosedi/android/build.gradle если нет) добавь:
+gradlebuildscript {
+  ext {
+    kotlinVersion = "1.9.0"
+  }
+}
+Если файл уже есть — найди kotlinVersion и замени на "1.9.0".
+4. Перепиши components/NativeMap.tsx:
+tsximport React from 'react';
+import { StyleSheet } from 'react-native';
+import YaMap, { Marker } from 'react-native-yamap';
+import { Region, MarkerData } from '@/types/map';
+
+YaMap.init(process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY ?? '');
+
+interface NativeMapProps {
+  region: Region;
+  markers: MarkerData[];
+}
+
+export default function NativeMap({ region, markers }: NativeMapProps) {
+  return (
+    <YaMap
+      style={StyleSheet.absoluteFillObject}
+      initialRegion={{
+        lat: region.latitude,
+        lon: region.longitude,
+        zoom: 11,
+      }}
+    >
+      {markers.map((marker) => (
+        <Marker
+          key={marker.id}
+          point={{
+            lat: marker.latitude,
+            lon: marker.longitude,
+          }}
+          color={marker.isSelected ? marker.selectedColor : marker.markerColor}
+          onPress={marker.onPress}
+        />
+      ))}
+    </YaMap>
+  );
+}
+5. Обнови app.json — убери react-native-maps, плагины должны быть:
+json"plugins": [
+  "expo-router",
+  "expo-font",
+  "expo-haptics",
+  "expo-document-picker"
+],
+"extra": {
+  "yandexMapsApiKey": "$(EXPO_PUBLIC_YANDEX_MAPS_API_KEY)"
+}
+6. Добавь ключ в .env:
+EXPO_PUBLIC_YANDEX_MAPS_API_KEY=твой_ключ_здесь
+7. Убедись что на expo.dev в Environment variables проекта pernatye-sosedi добавлена переменная:
+EXPO_PUBLIC_YANDEX_MAPS_API_KEY = твой_ключ
+8. Увеличь versionCode в app.json:
+json"android": {
+  "package": "com.pernatyesosedi.app",
+  "versionCode": 3
+}
+9. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+10. Обнови DOCUMENTATION.md — карта на react-native-yamap@3.5.0 (Kotlin 1.9.0 совместима с Expo SDK 54).

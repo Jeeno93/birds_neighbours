@@ -1,0 +1,136 @@
+Замени react-native-maps на Яндекс.Карты через MapKit SDK. Приложение крашит на карте в standalone APK.
+
+1. Удали react-native-maps
+
+bash
+
+npm uninstall react-native-maps
+
+2. Установи Яндекс MapKit
+
+bash
+
+npx expo install @yandex/react-native-maps
+
+Если пакет недоступен — используй альтернативу:
+
+bash
+
+npm install react-native-yamap
+
+3. Замени components/NativeMap.tsx полностью:
+
+tsx
+
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import YaMap, { Marker } from 'react-native-yamap';
+import { MarkerData, Region } from '@/types/map';
+
+interface NativeMapProps {
+  region: Region;
+  markers: MarkerData[];
+}
+
+YaMap.init(process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY || '');
+
+export default function NativeMap({ region, markers }: NativeMapProps) {
+  return (
+    <YaMap
+      style={{ flex: 1 }}
+      initialRegion={{
+        lat: region.latitude,
+        lon: region.longitude,
+        zoom: 11,
+      }}
+    >
+      {markers.map((marker) => (
+        <Marker
+          key={marker.id}
+          point={{ lat: marker.latitude, lon: marker.longitude }}
+          onPress={marker.onPress}
+          color={marker.isSelected ? marker.selectedColor : marker.markerColor}
+        />
+      ))}
+    </YaMap>
+  );
+}
+
+4. components/NativeMap.web.tsx — не трогай, оставь заглушку как есть.
+
+5. В онбординге app/onboarding/index.tsx — на последнем шаге (где показывается карта) замени <NativeMap> на статичную заглушку:
+
+tsx
+
+<View style={{
+  flex: 1,
+  backgroundColor: colors.secondary,
+  borderRadius: colors.radius,
+  alignItems: 'center',
+  justifyContent: 'center',
+  minHeight: 300,
+}}>
+  <Text style={{ fontSize: 64 }}>🗺️</Text>
+  <Text style={{
+    color: colors.foreground,
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  }}>
+    Карта птичников
+  </Text>
+  <Text style={{
+    color: colors.mutedForeground,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  }}>
+    После регистрации ты увидишь всех птичников рядом
+  </Text>
+</View>
+
+Живую карту рендерим только на вкладке «Карта», не в онбординге — это устраняет краш при первом запуске.
+
+6. Оберни карту в app/(tabs)/map.tsx в ErrorBoundary:
+
+tsx
+
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+// Найди место где рендерится <NativeMap> и оберни:
+<ErrorBoundary>
+  <NativeMap region={region} markers={mapMarkers} />
+</ErrorBoundary>
+
+7. Обнови app.json:
+
+Убери всё связанное с react-native-maps и googleMaps. Плагины должны быть:
+
+json
+
+"plugins": [
+  "expo-router",
+  "expo-font",
+  "expo-haptics",
+  "expo-document-picker"
+],
+"extra": {
+  "yandexMapsApiKey": "$(EXPO_PUBLIC_YANDEX_MAPS_API_KEY)"
+}
+
+В секции android убери config.googleMaps если есть.
+
+8. Добавь переменную окружения в .env (для локального запуска):
+
+EXPO_PUBLIC_YANDEX_MAPS_API_KEY=a01b1bc2-e8a9-4580-b76c-eb90b0798af8
+
+9. Проверь typecheck:
+
+bash
+
+pnpm --filter @workspace/pernatye-sosedi run typecheck
+
+Исправь все ошибки если есть.
+
+10. Обнови DOCUMENTATION.md — замени упоминания react-native-maps и Google Maps на react-native-yamap + Яндекс MapKit.

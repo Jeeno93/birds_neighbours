@@ -1,0 +1,58 @@
+Сборка APK падает на :react-native-yamap:compileReleaseKotlin — несовместимость с Kotlin/Gradle в Expo SDK 54. Замени карту на более совместимое решение.
+1. Удали react-native-yamap:
+bashnpm uninstall react-native-yamap
+2. Установи react-native-maps (официальный пакет Expo):
+bashnpx expo install react-native-maps
+3. Полностью перепиши components/NativeMap.tsx:
+tsximport React from 'react';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { StyleSheet } from 'react-native';
+import { Region, MarkerData } from '@/types/map';
+
+interface NativeMapProps {
+  region: Region;
+  markers: MarkerData[];
+}
+
+export default function NativeMap({ region, markers }: NativeMapProps) {
+  return (
+    <MapView
+      style={StyleSheet.absoluteFillObject}
+      provider={PROVIDER_DEFAULT}
+      initialRegion={region}
+    >
+      {markers.map((marker) => (
+        <Marker
+          key={marker.id}
+          coordinate={{
+            latitude: marker.latitude,
+            longitude: marker.longitude,
+          }}
+          pinColor={marker.isSelected ? marker.selectedColor : marker.markerColor}
+          onPress={marker.onPress}
+        />
+      ))}
+    </MapView>
+  );
+}
+4. Обнови app.json — убери упоминания yamap, добавь config для maps:
+json"plugins": [
+  "expo-router",
+  "expo-font",
+  "expo-haptics",
+  "expo-document-picker",
+  [
+    "react-native-maps",
+    {
+      "googleMapsApiKey": ""
+    }
+  ]
+]
+googleMapsApiKey оставь пустой строкой — на Android без ключа будет работать OpenStreetMap (PROVIDER_DEFAULT), это бесплатно и без регистрации.
+5. Убери инициализацию YaMap — найди и удали все вхождения:
+YaMap.init(...)
+и импорты из react-native-yamap во всех файлах.
+6. Переменную EXPO_PUBLIC_YANDEX_MAPS_API_KEY из .env и app.json → extra можно оставить или убрать — на сборку не влияет.
+7. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+8. Обнови DOCUMENTATION.md — замени react-native-yamap на react-native-maps (PROVIDER_DEFAULT / OpenStreetMap).

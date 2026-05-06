@@ -1,0 +1,168 @@
+Реализуй карту через WebView + Яндекс JS API. Все предыдущие попытки с react-native-maps и react-native-yamap стабильно крашили на реальном Android устройстве. WebView — принципиально другой подход без нативной компиляции.
+1. Установи WebView:
+bash
+npx expo install react-native-webview
+2. Замени components/NativeMap.tsx полностью:
+tsx
+import React, { useRef, useCallback } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { WebView } from 'react-native-webview';
+
+export interface MarkerData {
+  id: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+  markerColor?: string;
+  isSelected?: boolean;
+}
+
+export interface Region {
+  latitude: number;
+  longitude: number;
+  latitudeDelta?: number;
+  longitudeDelta?: number;
+}
+
+interface NativeMapProps {
+  region: Region;
+  markers?: MarkerData[];
+  onMarkerPress?: (id: string) => void;
+}
+
+const YANDEX_API_KEY = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY ?? '';
+
+function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): string {
+  const markersJson = JSON.stringify(markers);
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    window.markers = ${markersJson};
+    window.region = ${JSON.stringify(region)};
+  </script>
+  <script src="https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU" type="text/javascript"></script>
+  <script>
+    ymaps.ready(function () {
+      var map = new ymaps.Map('map', {
+        center: [window.region.latitude, window.region.longitude],
+        zoom: 11,
+        controls: ['zoomControl']
+      });
+
+      window.markers.forEach(function(marker) {
+        var placemark = new ymaps.Placemark(
+          [marker.latitude, marker.longitude],
+          { balloonContent: marker.title },
+          {
+            preset: marker.isSelected
+              ? 'islands#redDotIcon'
+              : 'islands#greenDotIcon',
+          }
+        );
+        placemark.events.add('click', function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'markerPress',
+            id: marker.id
+          }));
+        });
+        map.geoObjects.add(placemark);
+      });
+    });
+  </script>
+</body>
+</html>
+  `;
+}
+
+export default function NativeMap({ region, markers = [], onMarkerPress }: NativeMapProps) {
+  const webViewRef = useRef(null);
+
+  const handleMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'markerPress' && onMarkerPress) {
+        onMarkerPress(data.id);
+      }
+    } catch (e) {}
+  }, [onMarkerPress]);
+
+  const html = buildMapHtml(region, markers, YANDEX_API_KEY);
+
+  return (
+    <View style={styles.container}>
+      <WebView
+        ref={webViewRef}
+        source={{ html }}
+        style={styles.map}
+        onMessage={handleMessage}
+        javaScriptEnabled
+        domStorageEnabled
+        originWhitelist={['*']}
+        mixedContentMode="always"
+        onError={(e) => console.warn('WebView error:', e.nativeEvent)}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  map: { flex: 1 },
+});
+3. Обнови app/(tabs)/map.tsx
+Убери заглушку, подключи реальный NativeMap. Передавай маркеры из MOCK_NEIGHBORS:
+tsx
+import NativeMap, { MarkerData, Region } from '@/components/NativeMap';
+
+const region: Region = {
+  latitude: 55.7558,
+  longitude: 37.6173,
+};
+
+const mapMarkers: MarkerData[] = neighbors
+  .filter(n => n.lat && n.lng)
+  .map(n => ({
+    id: n.id,
+    latitude: n.lat,
+    longitude: n.lng,
+    title: `${n.name} · ${n.birds?.[0]?.species ?? ''}`,
+    isSelected: false,
+  }));
+
+// При нажатии на маркер — переход на профиль соседа
+const handleMarkerPress = (id: string) => {
+  router.push(`/neighbor/${id}`);
+};
+4. Обнови app.json — добавь плагин:
+json
+"plugins": [
+  "expo-router",
+  "expo-font",
+  "expo-document-picker",
+  "expo-image-picker",
+  "react-native-webview"
+]
+5. Убедись что переменная окружения доступна
+В .env:
+EXPO_PUBLIC_YANDEX_MAPS_API_KEY=a01b1bc2-e8a9-4580-b76c-eb90b0798af8
+На expo.dev переменная уже добавлена — проверь что имя точно EXPO_PUBLIC_YANDEX_MAPS_API_KEY.
+6. Удали старые файлы если остались:
+•	components/NativeMap.web.tsx
+•	любые импорты react-native-maps или react-native-yamap
+7. Проверь typecheck:
+bash
+pnpm --filter @workspace/pernatye-sosedi run typecheck
+8. Увеличь versionCode до 9 в app.json.
+9. Обнови DOCUMENTATION.md — карта реализована через react-native-webview + Яндекс Maps JS API 2.1. Маркеры передаются через postMessage. API ключ через EXPO_PUBLIC_YANDEX_MAPS_API_KEY.
+

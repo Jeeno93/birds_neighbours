@@ -1,0 +1,59 @@
+Внеси следующие изменения в приложение «Пернатые соседи».
+1. Обнови типы передержки
+В AppContext.tsx замени константу SIT_TYPE_LABELS:
+tsconst SIT_TYPE_LABELS: Record<SitType, string> = {
+  full: "🏠 К ситтеру — птица живёт у помощника",
+  guest: "🏡 К себе — ситтер приходит домой к хозяину",
+  medical_only: "💊 Помощь с лечением — хозяин дома, нужна помощь с процедурами",
+};
+2. Галочка лечения на каждую птицу в запросе
+В интерфейс SitRequestBird добавь поле (или создай если нет):
+tsinterface SitRequestBird {
+  birdId: string;
+  needsMedication: boolean;
+}
+В SitRequest замени bird_ids: string[] на birds: SitRequestBird[].
+В app/new-request.tsx рядом с каждой птицей добавь переключатель «Нужно лечение» — небольшой Switch справа от названия птицы. По умолчанию false.
+3. Опции готовности ситтера
+Добавь новый тип:
+tstype SitterCapability = 
+  | "can_medicate"      // Готов лечить / давать лекарства
+  | "can_release"       // Готов выпускать и ловить
+  | "can_host"          // Готов принять птицу у себя
+  | "can_visit";        // Готов приходить к хозяину
+
+const SITTER_CAPABILITY_LABELS: Record<SitterCapability, string> = {
+  can_medicate: "💊 Готов давать лекарства",
+  can_release: "🕊️ Готов выпускать и ловить",
+  can_host: "🏠 Готов принять птицу у себя",
+  can_visit: "🏡 Готов приходить к хозяину",
+};
+В интерфейс User добавь:
+tscapabilities?: SitterCapability[];
+В AppContext.tsx добавь метод:
+tsupdateCapabilities: (caps: SitterCapability[]) => void;
+4. Секция «Что я умею» в профиле
+В app/(tabs)/profile.tsx добавь секцию «Что я умею как ситтер» — мультиселект чипами из SITTER_CAPABILITY_LABELS. Размести сразу под секцией «Что я готов делать» (типы передержки).
+5. Отображение возможностей в карточке соседа
+В app/neighbor/[id].tsx добавь секцию «Умеет» — показывай чипы из capabilities соседа. Если пусто — показывай «Уточните при общении».
+6. Умный матчинг в поиске соседей
+В app/neighbors.tsx и в логике карты — при фильтрации учитывай совместимость:
+
+Если в запросе есть птица с needsMedication: true → показывай только соседей у которых capabilities содержит can_medicate
+Если тип запроса full → приоритизируй соседей с can_host
+Если тип запроса guest → приоритизируй соседей с can_visit
+
+Не скрывай несовместимых соседей — помечай их плашкой «Может не подойти» серым цветом.
+7. Обнови мок-данные соседей
+Добавь поле capabilities всем 20 соседям в MOCK_NEIGHBORS. Распредели разнообразно:
+
+n1, n2, n5, n7, n12, n17 — все 4 возможности
+n3, n8, n14 — только can_host и can_medicate
+n4, n9, n11 — только can_visit и can_release
+n6, n10, n15, n16 — только can_host
+n13, n18, n20 — пустой массив
+
+8. Увеличь versionCode до 10 в app.json.
+9. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+10. Обнови DOCUMENTATION.md — отрази новые типы SitterCapability, SitRequestBird, обновлённые формулировки SIT_TYPE_LABELS, логику матчинга.
