@@ -1,0 +1,73 @@
+Добавь определение местоположения пользователя в онбординг. На шаге «Профиль птичника» (app/onboarding/index.tsx, шаг 4) добавь блок геолокации.
+1. Установи пакет:
+bashnpx expo install expo-location
+2. Логика геолокации:
+Сначала автоматически пробуем получить координаты:
+tsimport * as Location from 'expo-location';
+
+const getLocation = async () => {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      const location = await Location.getCurrentPositionAsync({});
+      setLat(location.coords.latitude);
+      setLng(location.coords.longitude);
+      setLocationMethod('auto');
+    } else {
+      setLocationMethod('manual');
+    }
+  } catch {
+    setLocationMethod('manual');
+  }
+};
+3. UI на шаге профиля:
+Если геолокация получена — показывай:
+tsx<View style={{ flexDirection: 'row', alignItems: 'center', 
+  backgroundColor: colors.secondary, borderRadius: 12, padding: 12 }}>
+  <Text style={{ fontSize: 20 }}>📍</Text>
+  <Text style={{ color: colors.foreground, marginLeft: 8, flex: 1 }}>
+    Местоположение определено автоматически
+  </Text>
+  <TouchableOpacity onPress={() => setLocationMethod('manual')}>
+    <Text style={{ color: colors.primary, fontSize: 13 }}>Изменить</Text>
+  </TouchableOpacity>
+</View>
+Если геолокация отклонена или пользователь нажал «Изменить» — показывай поле ввода адреса:
+tsx<TextInput
+  placeholder="Введите адрес или район (например: м. Арбат)"
+  value={addressInput}
+  onChangeText={setAddressInput}
+  onEndEditing={() => geocodeAddress(addressInput)}
+/>
+4. Геокодирование через Яндекс:
+tsconst geocodeAddress = async (address: string) => {
+  try {
+    const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+    const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${encodeURIComponent(address + ', Москва')}&format=json&results=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const pos = data.response.GeoObjectCollection.featureMember[0]
+      ?.GeoObject?.Point?.pos;
+    if (pos) {
+      const [lng, lat] = pos.split(' ').map(Number);
+      setLat(lat);
+      setLng(lng);
+    }
+  } catch {
+    // геокодирование не удалось — координаты останутся пустыми
+  }
+};
+5. Сохранение координат
+При завершении онбординга передавай lat и lng в объект пользователя который отправляется на POST /api/users/auth и сохраняется в AsyncStorage.
+6. В app/edit-profile.tsx добавь аналогичный блок геолокации — кнопка «Обновить местоположение» которая повторяет ту же логику.
+7. Добавь в app.json плагин:
+json[
+  "expo-location",
+  {
+    "locationAlwaysAndWhenInUsePermission": "Приложение использует геолокацию чтобы показывать птичников рядом с вами."
+  }
+]
+8. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+9. Увеличь versionCode до 13 в app.json.
+10. Обнови DOCUMENTATION.md — добавь expo-location в стек, опиши логику геолокации в разделе онбординга.

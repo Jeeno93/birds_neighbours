@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -26,8 +27,56 @@ export default function EditProfileScreen() {
     String(currentUser?.experienceYears ?? 0)
   );
   const [showDistricts, setShowDistricts] = useState(false);
+  const [lat, setLat] = useState<number | undefined>(currentUser?.lat);
+  const [lng, setLng] = useState<number | undefined>(currentUser?.lng);
+  const [addressInput, setAddressInput] = useState("");
+  const [showAddressInput, setShowAddressInput] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
+
+  const updateLocation = async () => {
+    setLocationLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const location = await Location.getCurrentPositionAsync({});
+        setLat(location.coords.latitude);
+        setLng(location.coords.longitude);
+        setShowAddressInput(false);
+      } else {
+        setShowAddressInput(true);
+      }
+    } catch {
+      setShowAddressInput(true);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const geocodeAddress = async (address: string) => {
+    const trimmed = address.trim();
+    if (!trimmed) return;
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+      const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${encodeURIComponent(
+        trimmed + ", Москва"
+      )}&format=json&results=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const pos =
+        data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos;
+      if (pos) {
+        const [lngValue, latValue] = pos.split(" ").map(Number);
+        if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
+          setLat(latValue);
+          setLng(lngValue);
+        }
+      }
+    } catch {
+      // геокодирование не удалось
+    }
+  };
 
   const handleSave = async () => {
     if (!currentUser) {
@@ -47,6 +96,8 @@ export default function EditProfileScreen() {
       ...currentUser,
       name: trimmedName,
       district,
+      lat,
+      lng,
       experienceYears,
     });
     router.back();
@@ -161,6 +212,66 @@ export default function EditProfileScreen() {
               ))}
             </ScrollView>
           </View>
+        )}
+
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>
+          Местоположение
+        </Text>
+        <TouchableOpacity
+          style={[
+            styles.selectBtn,
+            { borderColor: colors.border, backgroundColor: colors.card },
+          ]}
+          onPress={updateLocation}
+          activeOpacity={0.8}
+          disabled={locationLoading}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <Text style={{ fontSize: 18, marginRight: 8 }}>📍</Text>
+            <Text
+              style={{
+                color: colors.foreground,
+                fontFamily: "Inter_400Regular",
+                fontSize: 14,
+                flex: 1,
+              }}
+            >
+              {locationLoading
+                ? "Определяем…"
+                : lat !== undefined && lng !== undefined
+                ? `Координаты: ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                : "Координаты не указаны"}
+            </Text>
+          </View>
+          <Text
+            style={{
+              color: colors.primary,
+              fontFamily: "Inter_500Medium",
+              fontSize: 13,
+            }}
+          >
+            Обновить
+          </Text>
+        </TouchableOpacity>
+        {showAddressInput && (
+          <TextInput
+            style={[
+              styles.input,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                color: colors.foreground,
+                marginTop: 8,
+              },
+            ]}
+            placeholder="Введите адрес или район (например: м. Арбат)"
+            placeholderTextColor={colors.mutedForeground}
+            value={addressInput}
+            onChangeText={setAddressInput}
+            onEndEditing={() => geocodeAddress(addressInput)}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
         )}
 
         <Text style={[styles.label, { color: colors.mutedForeground }]}>

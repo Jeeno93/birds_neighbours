@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { router } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -78,6 +79,58 @@ export default function OnboardingScreen() {
   const [userName, setUserName] = useState("Александр");
   const [telegramUsername, setTelegramUsername] = useState("");
   const [showDistricts, setShowDistricts] = useState(false);
+  const [lat, setLat] = useState<number | undefined>(undefined);
+  const [lng, setLng] = useState<number | undefined>(undefined);
+  const [locationMethod, setLocationMethod] = useState<"pending" | "auto" | "manual">("pending");
+  const [addressInput, setAddressInput] = useState("");
+  const [locationTriggered, setLocationTriggered] = useState(false);
+
+  const getLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const location = await Location.getCurrentPositionAsync({});
+        setLat(location.coords.latitude);
+        setLng(location.coords.longitude);
+        setLocationMethod("auto");
+      } else {
+        setLocationMethod("manual");
+      }
+    } catch {
+      setLocationMethod("manual");
+    }
+  };
+
+  const geocodeAddress = async (address: string) => {
+    const trimmed = address.trim();
+    if (!trimmed) return;
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+      const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${encodeURIComponent(
+        trimmed + ", Москва"
+      )}&format=json&results=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const pos =
+        data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos;
+      if (pos) {
+        const [lngValue, latValue] = pos.split(" ").map(Number);
+        if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
+          setLat(latValue);
+          setLng(lngValue);
+        }
+      }
+    } catch {
+      // геокодирование не удалось — координаты останутся пустыми
+    }
+  };
+
+  useEffect(() => {
+    if (step === 4 && !locationTriggered) {
+      setLocationTriggered(true);
+      getLocation();
+    }
+  }, [step, locationTriggered]);
 
   const totalSteps = 6;
 
@@ -128,6 +181,8 @@ export default function OnboardingScreen() {
       telegramId: baseUser.telegramId ?? telegramId,
       name: userName,
       district,
+      lat: lat ?? baseUser.lat,
+      lng: lng ?? baseUser.lng,
       experienceYears: parseInt(experienceYears) || 2,
       helpStatus,
       rating: baseUser.rating ?? 0,
@@ -382,13 +437,89 @@ export default function OnboardingScreen() {
 
       case "profile":
         return (
-          <View style={[styles.slide, { paddingTop: topPad + 20 }]}>
+          <ScrollView
+            style={{ width }}
+            contentContainerStyle={{ width, paddingTop: topPad + 20, paddingHorizontal: 24, paddingBottom: 24, alignItems: "center", flexGrow: 1 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={[styles.stepTitle, { color: colors.foreground }]}>
               Профиль птичника
             </Text>
             <Text style={[styles.stepDesc, { color: colors.mutedForeground }]}>
               Расскажите о себе — это поможет найти вас соседям
             </Text>
+            {locationMethod === "auto" && lat !== undefined && lng !== undefined ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: colors.secondary,
+                  borderRadius: 12,
+                  padding: 12,
+                  width: "100%",
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 20 }}>📍</Text>
+                <Text
+                  style={{
+                    color: colors.foreground,
+                    marginLeft: 8,
+                    flex: 1,
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 13,
+                  }}
+                >
+                  Местоположение определено автоматически
+                </Text>
+                <TouchableOpacity onPress={() => setLocationMethod("manual")}>
+                  <Text
+                    style={{
+                      color: colors.primary,
+                      fontSize: 13,
+                      fontFamily: "Inter_500Medium",
+                    }}
+                  >
+                    Изменить
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : locationMethod === "manual" ? (
+              <View style={{ width: "100%", marginBottom: 4 }}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: colors.border,
+                      color: colors.foreground,
+                      backgroundColor: colors.card,
+                      marginBottom: 6,
+                    },
+                  ]}
+                  placeholder="Введите адрес или район (например: м. Арбат)"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={addressInput}
+                  onChangeText={setAddressInput}
+                  onEndEditing={() => geocodeAddress(addressInput)}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {lat !== undefined && lng !== undefined && (
+                  <Text
+                    style={{
+                      color: colors.mutedForeground,
+                      fontSize: 12,
+                      fontFamily: "Inter_400Regular",
+                      marginBottom: 8,
+                      textAlign: "center",
+                    }}
+                  >
+                    📍 Координаты определены: {lat.toFixed(4)}, {lng.toFixed(4)}
+                  </Text>
+                )}
+              </View>
+            ) : null}
             <TouchableOpacity
               style={[styles.input, styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
               onPress={() => setShowDistricts(!showDistricts)}
@@ -450,7 +581,7 @@ export default function OnboardingScreen() {
                 );
               })}
             </View>
-          </View>
+          </ScrollView>
         );
 
       case "map":

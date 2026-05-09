@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.pernatyesosedi.app",
-      "versionCode": 12
+      "versionCode": 13
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -27,7 +27,13 @@
       "expo-router",
       "expo-font",
       "expo-document-picker",
-      "expo-image-picker"
+      "expo-image-picker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Приложение использует геолокацию чтобы показывать птичников рядом с вами."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
