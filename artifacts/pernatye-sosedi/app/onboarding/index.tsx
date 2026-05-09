@@ -76,6 +76,7 @@ export default function OnboardingScreen() {
   const [experienceYears, setExperienceYears] = useState("2");
   const [helpStatus, setHelpStatus] = useState<"ready" | "sometimes" | "not_now">("ready");
   const [userName, setUserName] = useState("Александр");
+  const [telegramUsername, setTelegramUsername] = useState("");
   const [showDistricts, setShowDistricts] = useState(false);
 
   const totalSteps = 6;
@@ -99,7 +100,8 @@ export default function OnboardingScreen() {
   const finish = async () => {
     const fallbackId =
       Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const telegramId = "tg_" + Date.now();
+    const tgUsername = telegramUsername.trim().replace(/^@/, "");
+    const telegramId = tgUsername || "tg_" + Date.now();
 
     let userId = fallbackId;
     let baseUser: Partial<User> = {
@@ -211,6 +213,15 @@ export default function OnboardingScreen() {
               placeholderTextColor={colors.mutedForeground}
               value={userName}
               onChangeText={setUserName}
+            />
+            <TextInput
+              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
+              placeholder="username"
+              placeholderTextColor={colors.mutedForeground}
+              value={telegramUsername}
+              onChangeText={setTelegramUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <View style={styles.tgNote}>
               <Feather name="shield" size={14} color={colors.primary} />
