@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import { pool } from "./db";
 import usersRouter from "./routes/users";
 import birdsRouter from "./routes/birds";
@@ -22,6 +24,19 @@ app.use("/api/reviews", reviewsRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.post("/migrate", async (_req, res) => {
+  try {
+    const sql = fs.readFileSync(
+      path.join(__dirname, "../migrations/001_init.sql"),
+      "utf8"
+    );
+    await pool.query(sql);
+    res.json({ success: true, message: "Migration applied" });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 async function start(): Promise<void> {
