@@ -1,0 +1,89 @@
+Подключи фронтенд приложения «Пернатые соседи» к реальному бэкенду. Бэкенд доступен по адресу https://pernatysosedi-api-almazkin93.amvera.io.
+1. Создай API клиент
+Создай файл artifacts/pernatye-sosedi/api/client.ts:
+tsconst BASE_URL = 'https://pernatysosedi-api-almazkin93.amvera.io';
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  userId?: string
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(userId ? { 'x-user-id': userId } : {}),
+  };
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+2. Обнови авторизацию в онбординге
+В app/onboarding/index.tsx на шаге ввода имени — после сохранения имени вызывай реальный API:
+tsimport { apiRequest } from '@/api/client';
+
+const user = await apiRequest<User>('/api/users/auth', {
+  method: 'POST',
+  body: JSON.stringify({
+    telegramId: 'tg_' + Date.now(),
+    name: userName,
+  }),
+});
+Сохраняй полученный user.id в AsyncStorage как @pernatye_user_id и весь объект user как @pernatye_user.
+3. Обнови AppContext.tsx
+Добавь в AppProvider при монтировании — загружай соседей с реального API:
+tsuseEffect(() => {
+  const loadNeighbors = async () => {
+    try {
+      const data = await apiRequest<User[]>('/api/users?city=Москва');
+      if (data.length > 0) setNeighbors(data);
+      // если пусто — оставляем мок-данные как fallback
+    } catch {
+      // API недоступен — используем мок-данные
+    }
+  };
+  loadNeighbors();
+}, []);
+Обнови методы:
+addBird → после сохранения в AsyncStorage вызывай:
+tsawait apiRequest('/api/birds', {
+  method: 'POST',
+  body: JSON.stringify(bird),
+}, currentUser?.id);
+updateBird → вызывай:
+tsawait apiRequest(`/api/birds/${id}`, {
+  method: 'PUT',
+  body: JSON.stringify(data),
+}, currentUser?.id);
+deleteBird → вызывай:
+tsawait apiRequest(`/api/birds/${id}`, {
+  method: 'DELETE',
+}, currentUser?.id);
+addSitRequest → вызывай:
+tsawait apiRequest('/api/sit-requests', {
+  method: 'POST',
+  body: JSON.stringify(request),
+}, currentUser?.id);
+setCurrentUser → после сохранения в AsyncStorage вызывай:
+tsawait apiRequest(`/api/users/${user.id}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    name: user.name,
+    district: user.district,
+    lat: user.lat,
+    lng: user.lng,
+    helpStatus: user.helpStatus,
+    experienceYears: user.experienceYears,
+    sitTypes: user.sitTypes,
+    capabilities: user.capabilities,
+    otherPets: user.otherPets,
+  }),
+}, user.id);
+Важно: все API вызовы оборачивай в try-catch. Если API недоступен — данные сохраняются только локально в AsyncStorage, приложение не падает.
+4. Добавь переменную окружения
+В .env фронтенда добавь:
+EXPO_PUBLIC_API_URL=https://pernatysosedi-api-almazkin93.amvera.io
+И замени хардкод в api/client.ts:
+tsconst BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://pernatysosedi-api-almazkin93.amvera.io';
+5. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+6. Увеличь versionCode до 12 в app.json.
+7. Обнови DOCUMENTATION.md — добавь раздел «API интеграция» с описанием api/client.ts и списком подключённых endpoints.

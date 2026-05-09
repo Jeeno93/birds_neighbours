@@ -89,6 +89,8 @@ artifacts/pernatye-sosedi/
 │   ├── sit-requests.tsx          # Мои запросы на присмотр
 │   ├── settings.tsx              # Настройки: тема, профиль, данные
 │   └── edit-profile.tsx          # Редактирование своего профиля
+├── api/                          # Клиент для бэкенда Pernatye Sosedi API
+│   └── client.ts                 # apiRequest<T>() — fetch + x-user-id, BASE_URL из EXPO_PUBLIC_API_URL
 ├── components/                   # Переиспользуемые компоненты
 │   ├── Avatar.tsx                # Аватар пользователя
 │   ├── BirdCard.tsx              # Карточка птицы (обычная и compact)
@@ -179,12 +181,14 @@ pnpm --filter @workspace/pernatye-sosedi run typecheck
 | `REPLIT_DEV_DOMAIN` | Публичный домен Replit |
 | `REPL_ID` | ID Replit Repl |
 | `PORT` | Порт Metro Bundler |
+| `EXPO_PUBLIC_API_URL` | Базовый URL бэкенда Pernatye Sosedi API (по умолчанию `https://pernatysosedi-api-almazkin93.amvera.io`) |
+| `EXPO_PUBLIC_YANDEX_MAPS_API_KEY` | API-ключ Яндекс.Карт для `NativeMap` |
 
 ---
 
 ## Архитектура состояния
 
-Всё состояние хранится локально в `AsyncStorage` через два React-провайдера.
+Состояние хранится локально в `AsyncStorage` (источник истины для офлайн-работы) и параллельно синхронизируется с REST API на Amvera через `api/client.ts` (см. раздел «API интеграция»). Если бэкенд недоступен, приложение продолжает работать только на локальных данных — все API-вызовы обёрнуты в `try-catch`.
 
 ### Порядок вложенности в `app/_layout.tsx`
 
@@ -201,6 +205,7 @@ pnpm --filter @workspace/pernatye-sosedi run typecheck
 | Ключ | Содержимое |
 |------|-----------|
 | `@pernatye_user` | Профиль текущего пользователя (`User`) |
+| `@pernatye_user_id` | ID текущего пользователя (используется как `x-user-id` для API) |
 | `@pernatye_birds` | Массив птиц пользователя (`Bird[]`) |
 | `@pernatye_sit_requests` | Запросы на присмотр (`SitRequest[]`) |
 | `@pernatye_reviews` | Написанные отзывы (`Review[]`) |
@@ -235,6 +240,55 @@ function MyScreen() {
   } = useApp();
 }
 ```
+
+---
+
+## API интеграция
+
+Приложение подключено к REST-бэкенду «Пернатые соседи» (см. `artifacts/pernatye-sosedi-api/`), задеплоенному на Amvera.
+
+- **Базовый URL**: `EXPO_PUBLIC_API_URL` (по умолчанию `https://pernatysosedi-api-almazkin93.amvera.io`).
+- **Авторизация**: заголовок `x-user-id: <id>` — берётся из `currentUser.id` (он же `@pernatye_user_id` в AsyncStorage).
+- **Стратегия офлайн**: все вызовы API обёрнуты в `try-catch`. AsyncStorage — источник истины; API — сервер-сайд синхронизация. Если бэкенд лёг, UI продолжает работать на локальных данных.
+
+### Клиент (`api/client.ts`)
+
+```ts
+import { apiRequest } from "@/api/client";
+
+const user = await apiRequest<User>(
+  "/api/users/auth",
+  { method: "POST", body: JSON.stringify({ telegramId, name }) }
+);
+
+await apiRequest(
+  `/api/birds/${id}`,
+  { method: "PUT", body: JSON.stringify(data) },
+  currentUser.id   // → заголовок x-user-id
+);
+```
+
+`apiRequest<T>(path, options?, userId?)` сам выставляет `Content-Type: application/json`, пробрасывает `x-user-id`, бросает `Error("API error: <status>")` на не-2xx и возвращает `undefined` для `204`.
+
+### Подключённые endpoints
+
+| Куда вызывается | Endpoint | Описание |
+|---|---|---|
+| `app/onboarding/index.tsx` (`finish`) | `POST /api/users/auth` | Find-or-create по `telegramId`. Возвращает `User` с настоящим UUID — он сохраняется в AsyncStorage (`@pernatye_user`, `@pernatye_user_id`) и используется как `x-user-id` дальше. |
+| `AppContext.tsx` (`useEffect` при монтировании) | `GET /api/users?city=Москва` | Загружает реальных соседей и заменяет мок-данные. Если запрос упал или вернул пусто — остаются `MOCK_NEIGHBORS`. |
+| `AppContext.tsx` (`setCurrentUser`) | `PUT /api/users/:id` | Синхронизирует профиль (`name, district, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets`). Вызывается также неявно из `updateHelpStatus`, `updateOtherPets`, `updateSitTypes`, `updateCapabilities`. |
+| `AppContext.tsx` (`addBird`) | `POST /api/birds` | После записи в AsyncStorage. |
+| `AppContext.tsx` (`updateBird`) | `PUT /api/birds/:id` | После записи в AsyncStorage. |
+| `AppContext.tsx` (`deleteBird`) | `DELETE /api/birds/:id` | После удаления локально. |
+| `AppContext.tsx` (`addSitRequest`) | `POST /api/sit-requests` | После записи в AsyncStorage. |
+
+`updateSitRequest` и `addReview` пока пишут только локально — соответствующие endpoints (`PUT /api/sit-requests/:id`, `POST /api/reviews`) есть на бэкенде, но фронт их ещё не дёргает.
+
+### Поведение при отсутствии бэкенда
+
+- Онбординг: если `/api/users/auth` падает, генерируется локальный `id` и `telegramId = "tg_<timestamp>"`; приложение продолжает работать оффлайн.
+- Все CRUD-операции: данные сохраняются в AsyncStorage даже при сетевой ошибке, исключение проглатывается.
+- Соседи на карте: если `GET /api/users` упал — показываются 20 мок-соседей из `MOCK_NEIGHBORS`.
 
 ### Хук useThemeMode()
 

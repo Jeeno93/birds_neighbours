@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { apiRequest } from "@/api/client";
 
 export type HelpStatus = "ready" | "sometimes" | "not_now";
 
@@ -152,6 +153,7 @@ const AppContext = createContext<AppContextType | null>(null);
 
 const STORAGE_KEYS = {
   user: "@pernatye_user",
+  userId: "@pernatye_user_id",
   birds: "@pernatye_birds",
   sitRequests: "@pernatye_sit_requests",
   reviews: "@pernatye_reviews",
@@ -486,11 +488,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [birds, setBirds] = useState<Bird[]>([]);
   const [sitRequests, setSitRequests] = useState<SitRequest[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [neighbors, setNeighbors] = useState<User[]>(NEIGHBORS_WITH_SIT_TYPES);
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    const loadNeighbors = async () => {
+      try {
+        const data = await apiRequest<User[]>("/api/users?city=Москва");
+        if (Array.isArray(data) && data.length > 0) {
+          setNeighbors(data);
+        }
+      } catch {
+        // API недоступен — используем мок-данные
+      }
+    };
+    loadNeighbors();
   }, []);
 
   const loadData = async () => {
@@ -532,39 +549,127 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setCurrentUser = useCallback(async (user: User) => {
     setCurrentUserState(user);
     await AsyncStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+    await AsyncStorage.setItem(STORAGE_KEYS.userId, user.id);
+    try {
+      await apiRequest(
+        `/api/users/${user.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            name: user.name,
+            district: user.district,
+            lat: user.lat,
+            lng: user.lng,
+            helpStatus: user.helpStatus,
+            experienceYears: user.experienceYears,
+            sitTypes: user.sitTypes,
+            capabilities: user.capabilities,
+            otherPets: user.otherPets,
+          }),
+        },
+        user.id
+      );
+    } catch {
+      // API недоступен — данные сохранены локально
+    }
   }, []);
 
-  const addBird = useCallback(async (bird: Bird) => {
-    setBirds((prev) => {
-      const next = [...prev, bird];
-      AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const addBird = useCallback(
+    async (bird: Bird) => {
+      setBirds((prev) => {
+        const next = [...prev, bird];
+        AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
+        return next;
+      });
+      if (currentUser?.id) {
+        try {
+          await apiRequest(
+            "/api/birds",
+            {
+              method: "POST",
+              body: JSON.stringify(bird),
+            },
+            currentUser.id
+          );
+        } catch {
+          // API недоступен — данные только локально
+        }
+      }
+    },
+    [currentUser?.id]
+  );
 
-  const updateBird = useCallback(async (id: string, data: Partial<Bird>) => {
-    setBirds((prev) => {
-      const next = prev.map((b) => (b.id === id ? { ...b, ...data } : b));
-      AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const updateBird = useCallback(
+    async (id: string, data: Partial<Bird>) => {
+      setBirds((prev) => {
+        const next = prev.map((b) => (b.id === id ? { ...b, ...data } : b));
+        AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
+        return next;
+      });
+      if (currentUser?.id) {
+        try {
+          await apiRequest(
+            `/api/birds/${id}`,
+            {
+              method: "PUT",
+              body: JSON.stringify(data),
+            },
+            currentUser.id
+          );
+        } catch {
+          // API недоступен — данные только локально
+        }
+      }
+    },
+    [currentUser?.id]
+  );
 
-  const deleteBird = useCallback(async (id: string) => {
-    setBirds((prev) => {
-      const next = prev.filter((b) => b.id !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const deleteBird = useCallback(
+    async (id: string) => {
+      setBirds((prev) => {
+        const next = prev.filter((b) => b.id !== id);
+        AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
+        return next;
+      });
+      if (currentUser?.id) {
+        try {
+          await apiRequest(
+            `/api/birds/${id}`,
+            { method: "DELETE" },
+            currentUser.id
+          );
+        } catch {
+          // API недоступен — данные только локально
+        }
+      }
+    },
+    [currentUser?.id]
+  );
 
-  const addSitRequest = useCallback(async (request: SitRequest) => {
-    setSitRequests((prev) => {
-      const next = [...prev, request];
-      AsyncStorage.setItem(STORAGE_KEYS.sitRequests, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const addSitRequest = useCallback(
+    async (request: SitRequest) => {
+      setSitRequests((prev) => {
+        const next = [...prev, request];
+        AsyncStorage.setItem(STORAGE_KEYS.sitRequests, JSON.stringify(next));
+        return next;
+      });
+      if (currentUser?.id) {
+        try {
+          await apiRequest(
+            "/api/sit-requests",
+            {
+              method: "POST",
+              body: JSON.stringify(request),
+            },
+            currentUser.id
+          );
+        } catch {
+          // API недоступен — данные только локально
+        }
+      }
+    },
+    [currentUser?.id]
+  );
 
   const updateSitRequest = useCallback(
     async (id: string, data: Partial<SitRequest>) => {
@@ -633,7 +738,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         birds,
         sitRequests,
         reviews,
-        neighbors: NEIGHBORS_WITH_SIT_TYPES,
+        neighbors,
         isOnboarded,
         isLoading,
         setCurrentUser,

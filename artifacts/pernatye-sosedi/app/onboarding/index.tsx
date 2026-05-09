@@ -29,6 +29,7 @@ import {
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
 import { useColors } from "@/hooks/useColors";
+import { apiRequest } from "@/api/client";
 
 const { width } = Dimensions.get("window");
 
@@ -96,16 +97,39 @@ export default function OnboardingScreen() {
   };
 
   const finish = async () => {
-    const userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const fallbackId =
+      Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const telegramId = "tg_" + Date.now();
+
+    let userId = fallbackId;
+    let baseUser: Partial<User> = {
+      id: fallbackId,
+      telegramId,
+      rating: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const apiUser = await apiRequest<User>("/api/users/auth", {
+        method: "POST",
+        body: JSON.stringify({ telegramId, name: userName }),
+      });
+      userId = apiUser.id;
+      baseUser = apiUser;
+    } catch {
+      // API недоступен — используем локальные id, продолжаем оффлайн
+    }
+
     const user: User = {
+      ...(baseUser as User),
       id: userId,
-      telegramId: "me",
+      telegramId: baseUser.telegramId ?? telegramId,
       name: userName,
       district,
       experienceYears: parseInt(experienceYears) || 2,
       helpStatus,
-      rating: 0,
-      createdAt: new Date().toISOString(),
+      rating: baseUser.rating ?? 0,
+      createdAt: baseUser.createdAt ?? new Date().toISOString(),
     };
 
     const birdId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
