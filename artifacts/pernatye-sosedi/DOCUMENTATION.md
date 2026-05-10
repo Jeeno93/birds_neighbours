@@ -276,7 +276,7 @@ await apiRequest(
 | Куда вызывается | Endpoint | Описание |
 |---|---|---|
 | `app/onboarding/index.tsx` (`finish`) | `POST /api/users/auth` | Find-or-create по `telegramId`. Возвращает `User` с настоящим UUID — он сохраняется в AsyncStorage (`@pernatye_user`, `@pernatye_user_id`) и используется как `x-user-id` дальше. |
-| `AppContext.tsx` (`useEffect` при монтировании) | `GET /api/users?city=Москва` | Загружает реальных соседей и заменяет мок-данные. Если запрос упал или вернул пусто — остаются `MOCK_NEIGHBORS`. |
+| `AppContext.tsx` (`useEffect` при монтировании) | `GET /api/users?city=Москва` | Загружает реальных соседей. Если `data.length >= 2` — `setNeighbors(data)`. Если меньше двух (но запрос успешен) — `setNeighbors([...data, ...MOCK_NEIGHBORS].slice(0, 20))`, чтобы карта не была пустой. Если запрос упал — остаются `MOCK_NEIGHBORS`. |
 | `AppContext.tsx` (`setCurrentUser`) | `PUT /api/users/:id` | Синхронизирует профиль (`name, district, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets`). Вызывается также неявно из `updateHelpStatus`, `updateOtherPets`, `updateSitTypes`, `updateCapabilities`. |
 | `AppContext.tsx` (`addBird`) | `POST /api/birds` | После записи в AsyncStorage. |
 | `AppContext.tsx` (`updateBird`) | `PUT /api/birds/:id` | После записи в AsyncStorage. |
@@ -287,7 +287,8 @@ await apiRequest(
 
 ### Поведение при отсутствии бэкенда
 
-- Онбординг: если `/api/users/auth` падает, генерируется локальный `id` и `telegramId = "tg_<timestamp>"`; приложение продолжает работать оффлайн.
+- Онбординг: при успехе `POST /api/users/auth` используется **только** `apiUser.id` (UUID); локальный fallback-id генерируется **исключительно** в `catch`-ветке, когда API недоступен. Это гарантирует, что в `@pernatye_user_id` лежит настоящий UUID, если сервер ответил.
+- В `AppContext` все API-методы (`setCurrentUser`, `addBird`, `updateBird`, `deleteBird`, `addSitRequest`) перед запросом проверяют `isValidUUID(currentUser.id)` (regex `^[0-9a-f]{8}-…-[0-9a-f]{12}$`). При локальном (НЕ-UUID) id данные сохраняются только в AsyncStorage, без обращения к API — это не даёт серверу падать на «invalid uuid» и поддерживает чистый оффлайн-режим.
 - Все CRUD-операции: данные сохраняются в AsyncStorage даже при сетевой ошибке, исключение проглатывается.
 - Соседи на карте: если `GET /api/users` упал — показываются 20 мок-соседей из `MOCK_NEIGHBORS`.
 
@@ -605,19 +606,32 @@ HEX-цвета для каждого статуса:
 
 По завершению создаётся `User` (с координатами `lat`/`lng`, если они определены) и первая `Bird`, вызывается `completeOnboarding()`, происходит редирект на `/(tabs)/map`.
 
-#### Геолокация на шаге «Профиль птичника»
+#### Геолокация с картой на шаге «Профиль птичника»
 
-При первом входе на шаг 4 автоматически вызывается `Location.requestForegroundPermissionsAsync()` (`expo-location`).
+UI шага 4 — мини-карта Яндекс (`NativeMap`, высота 220, zoom 14) с одним маркером цвета `colors.primary`. Под картой — текст с адресом, ниже — кнопка «Использовать это место».
 
-- **Permission granted** → `Location.getCurrentPositionAsync()` → координаты сохраняются в state `lat`/`lng`, `locationMethod = "auto"`. UI показывает плашку «📍 Местоположение определено автоматически» с кнопкой «Изменить».
-- **Permission denied или ошибка** → `locationMethod = "manual"`. Показывается поле «Введите адрес или район (например: м. Арбат)».
-- При вводе адреса по `onEndEditing` вызывается `geocodeAddress()` — запрос к Яндекс Геокодеру (`https://geocode-maps.yandex.ru/1.x/`) с ключом `EXPO_PUBLIC_YANDEX_MAPS_API_KEY` и автоприпиской `, Москва`. Парсится `featureMember[0].GeoObject.Point.pos` → `lat`/`lng`.
-- Все ошибки (нет интернета, отказ в разрешении, нераспарсенный ответ) проглатываются — поля `lat`/`lng` просто остаются пустыми, онбординг не блокируется.
-- При завершении `lat`/`lng` уходят в `User`, сохраняются в AsyncStorage и в `PUT /api/users/:id` (через `setCurrentUser`).
+При первом входе на шаг 4 (`useEffect` по `step === 4`) автоматически:
+1. Запрашивается разрешение `Location.requestForegroundPermissionsAsync()` (`expo-location`).
+2. Если granted → `getCurrentPositionAsync()` → `updateMarker(lat, lng)`.
+3. Если denied или ошибка → маркер ставится в центр Москвы (`55.7558, 37.6173`).
 
-Та же логика доступна позже на экране **«Редактировать профиль»** (`app/edit-profile.tsx`) — кнопка-карточка «📍 Координаты … / Обновить» вызывает `updateLocation()`; при отказе появляется поле для ручного ввода адреса с тем же геокодером.
+`updateMarker(lat, lng)` сохраняет координаты в state, сбрасывает флаг подтверждения и вызывает `reverseGeocode(lat, lng)` — запрос к Яндекс Геокодеру (`https://geocode-maps.yandex.ru/1.x/?apikey=${EXPO_PUBLIC_YANDEX_MAPS_API_KEY}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`). Извлекается `featureMember[0].GeoObject.metaDataProperty.GeocoderMetaData.text` → отображается как адрес. Координаты пользователю не показываются.
+
+Поведение `NativeMap`:
+- Тап по карте → `onMapPress({ latitude, longitude })` → `updateMarker()` (маркер «прыгает» в новую точку).
+- Маркер `draggable: true` — после `dragend` тоже эмитится `mapPress` с конечными координатами.
+
+Кнопка «Использовать это место» включает флаг `locationConfirmed` (визуальное подтверждение «✓ Место сохранено», лёгкая haptic). Сами координаты обновляются в state живьём при каждом тапе/перетаскивании, поэтому кнопка не обязательна для прогресса — финальное сохранение `lat`/`lng` происходит в `finish()`. Адрес кладётся в AsyncStorage под ключом `@pernatye_address`.
+
+Та же логика доступна на экране **«Редактировать профиль»** (`app/edit-profile.tsx`): мини-карта с тем же поведением, ссылка «Определить автоматически» рядом с лейблом «Местоположение» вызывает `expo-location`; при первой отрисовке для уже сохранённых `currentUser.lat/lng` подгружается адрес через тот же `reverseGeocode()`.
 
 Разрешение настроено в `app.json` через плагин `expo-location` с текстом `locationAlwaysAndWhenInUsePermission`: «Приложение использует геолокацию чтобы показывать птичников рядом с вами.»
+
+#### NativeMap.tsx — пропсы для пикера
+
+- `onMapPress?: (coords: { latitude: number; longitude: number }) => void` — вызывается на клик по карте и на `dragend` любого `draggable` маркера. В HTML добавлен `map.events.add('click', …)` который через `window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapPress', latitude, longitude }))` пробрасывает координаты в RN.
+- `zoom?: number` — начальный зум (по умолчанию 11).
+- `MarkerData.draggable?: boolean` — включает `draggable: true` в опциях `Placemark` и подписывается на `dragend`.
 
 ---
 

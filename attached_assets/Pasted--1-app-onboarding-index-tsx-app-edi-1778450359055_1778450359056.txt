@@ -1,0 +1,60 @@
+Внеси три исправления:
+1. Геолокация с картой
+В app/onboarding/index.tsx на шаге профиля и в app/edit-profile.tsx замени текущий блок геолокации на новый UX:
+
+Показывай NativeMap с одним перетаскиваемым маркером
+Начальная позиция — автоматически определённые координаты через expo-location
+Маркер можно перетащить в нужное место
+Под картой показывай адрес через reverse geocoding Яндекса:
+
+tsconst reverseGeocode = async (lat: number, lng: number) => {
+  const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+  const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data.response.GeoObjectCollection.featureMember[0]
+    ?.GeoObject?.metaDataProperty?.GeocoderMetaData?.text ?? '';
+};
+
+Показывай полученный адрес текстом под картой — никаких координат пользователю
+Кнопка «Использовать это место» сохраняет lat, lng и адрес
+
+В NativeMap.tsx добавь поддержку перетаскиваемого маркера — при тапе на карту вызывай onMapPress({ latitude, longitude }) через postMessage. Добавь пропс:
+tsonMapPress?: (coords: { latitude: number; longitude: number }) => void;
+В HTML карты добавь обработчик клика:
+jsmap.events.add('click', function(e) {
+  const coords = e.get('coords');
+  window.ReactNativeWebView.postMessage(JSON.stringify({
+    type: 'mapPress',
+    latitude: coords[0],
+    longitude: coords[1]
+  }));
+});
+2. Исправь баг с UUID
+В app/onboarding/index.tsx в функции finish():
+
+После POST /api/users/auth используй ТОЛЬКО user.id из ответа API
+Сохраняй в AsyncStorage: @pernatye_user_id = user.id (реальный UUID)
+Никогда не генерируй локальный ID если API ответил успешно
+
+В context/AppContext.tsx:
+
+При загрузке добавь проверку UUID перед любым API запросом:
+
+tsconst isValidUUID = (id: string) => 
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+Если currentUser.id не валидный UUID — не отправляй API запросы, только сохраняй локально
+
+3. Исправь fallback мок-данных
+В context/AppContext.tsx в useEffect загрузки соседей:
+tsconst data = await apiRequest<User[]>('/api/users?city=Москва');
+if (data.length >= 2) {
+  setNeighbors(data);
+} else {
+  // показываем мок если реальных пользователей меньше 2
+  setNeighbors([...data, ...MOCK_NEIGHBORS].slice(0, 20));
+}
+4. Увеличь versionCode до 14.
+5. Проверь typecheck.
+6. Обнови DOCUMENTATION.md.

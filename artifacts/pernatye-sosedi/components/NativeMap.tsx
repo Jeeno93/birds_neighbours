@@ -9,6 +9,7 @@ export interface MarkerData {
   title: string;
   markerColor?: string;
   isSelected?: boolean;
+  draggable?: boolean;
 }
 
 export interface Region {
@@ -18,15 +19,27 @@ export interface Region {
   longitudeDelta?: number;
 }
 
+export interface MapPressCoords {
+  latitude: number;
+  longitude: number;
+}
+
 interface NativeMapProps {
   region: Region;
   markers?: MarkerData[];
   onMarkerPress?: (id: string) => void;
+  onMapPress?: (coords: MapPressCoords) => void;
+  zoom?: number;
 }
 
 const YANDEX_API_KEY = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY ?? "";
 
-function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): string {
+function buildMapHtml(
+  region: Region,
+  markers: MarkerData[],
+  apiKey: string,
+  zoom: number
+): string {
   const markersJson = JSON.stringify(markers);
   return `<!DOCTYPE html>
 <html>
@@ -43,14 +56,26 @@ function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): st
   <script>
     window.markers = ${markersJson};
     window.region = ${JSON.stringify(region)};
+    window.mapZoom = ${zoom};
   </script>
   <script src="https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU" type="text/javascript"></script>
   <script>
     ymaps.ready(function () {
       var map = new ymaps.Map('map', {
         center: [window.region.latitude, window.region.longitude],
-        zoom: 11,
+        zoom: window.mapZoom,
         controls: ['zoomControl']
+      });
+
+      map.events.add('click', function(e) {
+        var coords = e.get('coords');
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'mapPress',
+            latitude: coords[0],
+            longitude: coords[1]
+          }));
+        }
       });
 
       window.markers.forEach(function(marker) {
@@ -61,12 +86,14 @@ function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): st
                 '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="' + marker.markerColor + '" stroke="#fff" stroke-width="2"/></svg>'
               ),
               iconImageSize: [22, 22],
-              iconImageOffset: [-11, -11]
+              iconImageOffset: [-11, -11],
+              draggable: !!marker.draggable
             }
           : {
               preset: marker.isSelected
                 ? 'islands#redDotIcon'
-                : 'islands#greenDotIcon'
+                : 'islands#greenDotIcon',
+              draggable: !!marker.draggable
             };
         var placemark = new ymaps.Placemark(
           [marker.latitude, marker.longitude],
@@ -81,6 +108,18 @@ function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): st
             }));
           }
         });
+        if (marker.draggable) {
+          placemark.events.add('dragend', function() {
+            var coords = placemark.geometry.getCoordinates();
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'mapPress',
+                latitude: coords[0],
+                longitude: coords[1]
+              }));
+            }
+          });
+        }
         map.geoObjects.add(placemark);
       });
     });
@@ -89,7 +128,13 @@ function buildMapHtml(region: Region, markers: MarkerData[], apiKey: string): st
 </html>`;
 }
 
-export default function NativeMap({ region, markers = [], onMarkerPress }: NativeMapProps) {
+export default function NativeMap({
+  region,
+  markers = [],
+  onMarkerPress,
+  onMapPress,
+  zoom = 11,
+}: NativeMapProps) {
   const webViewRef = useRef<WebView>(null);
 
   const handleMessage = useCallback(
@@ -99,16 +144,24 @@ export default function NativeMap({ region, markers = [], onMarkerPress }: Nativ
         if (data?.type === "markerPress" && typeof data.id === "string" && onMarkerPress) {
           onMarkerPress(data.id);
         }
+        if (
+          data?.type === "mapPress" &&
+          typeof data.latitude === "number" &&
+          typeof data.longitude === "number" &&
+          onMapPress
+        ) {
+          onMapPress({ latitude: data.latitude, longitude: data.longitude });
+        }
       } catch {
         // ignore malformed payloads
       }
     },
-    [onMarkerPress]
+    [onMarkerPress, onMapPress]
   );
 
   const html = useMemo(
-    () => buildMapHtml(region, markers, YANDEX_API_KEY),
-    [region, markers]
+    () => buildMapHtml(region, markers, YANDEX_API_KEY, zoom),
+    [region, markers, zoom]
   );
 
   return (

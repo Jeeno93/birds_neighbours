@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { router } from "expo-router";
@@ -29,8 +30,26 @@ import {
   useApp,
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
+import NativeMap, { MarkerData } from "@/components/NativeMap";
 import { useColors } from "@/hooks/useColors";
 import { apiRequest } from "@/api/client";
+
+const MOSCOW_CENTER = { latitude: 55.7558, longitude: 37.6173 };
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+    const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return (
+      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject
+        ?.metaDataProperty?.GeocoderMetaData?.text ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
 
 const { width } = Dimensions.get("window");
 
@@ -81,47 +100,35 @@ export default function OnboardingScreen() {
   const [showDistricts, setShowDistricts] = useState(false);
   const [lat, setLat] = useState<number | undefined>(undefined);
   const [lng, setLng] = useState<number | undefined>(undefined);
-  const [locationMethod, setLocationMethod] = useState<"pending" | "auto" | "manual">("pending");
-  const [addressInput, setAddressInput] = useState("");
+  const [address, setAddress] = useState("");
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [locationTriggered, setLocationTriggered] = useState(false);
+
+  const geocodeReqRef = useRef(0);
+  const updateMarker = async (latValue: number, lngValue: number) => {
+    setLat(latValue);
+    setLng(lngValue);
+    setLocationConfirmed(false);
+    setAddressLoading(true);
+    const reqId = ++geocodeReqRef.current;
+    const text = await reverseGeocode(latValue, lngValue);
+    if (reqId !== geocodeReqRef.current) return; // устаревший ответ
+    setAddress(text);
+    setAddressLoading(false);
+  };
 
   const getLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const location = await Location.getCurrentPositionAsync({});
-        setLat(location.coords.latitude);
-        setLng(location.coords.longitude);
-        setLocationMethod("auto");
+        await updateMarker(location.coords.latitude, location.coords.longitude);
       } else {
-        setLocationMethod("manual");
+        await updateMarker(MOSCOW_CENTER.latitude, MOSCOW_CENTER.longitude);
       }
     } catch {
-      setLocationMethod("manual");
-    }
-  };
-
-  const geocodeAddress = async (address: string) => {
-    const trimmed = address.trim();
-    if (!trimmed) return;
-    try {
-      const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
-      const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${encodeURIComponent(
-        trimmed + ", Москва"
-      )}&format=json&results=1`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const pos =
-        data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos;
-      if (pos) {
-        const [lngValue, latValue] = pos.split(" ").map(Number);
-        if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
-          setLat(latValue);
-          setLng(lngValue);
-        }
-      }
-    } catch {
-      // геокодирование не удалось — координаты останутся пустыми
+      await updateMarker(MOSCOW_CENTER.latitude, MOSCOW_CENTER.longitude);
     }
   };
 
@@ -151,20 +158,14 @@ export default function OnboardingScreen() {
   };
 
   const finish = async () => {
-    const fallbackId =
-      Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const tgUsername = telegramUsername.trim().replace(/^@/, "");
     const telegramId = tgUsername || "tg_" + Date.now();
 
-    let userId = fallbackId;
-    let baseUser: Partial<User> = {
-      id: fallbackId,
-      telegramId,
-      rating: 0,
-      createdAt: new Date().toISOString(),
-    };
+    let userId: string;
+    let baseUser: Partial<User>;
 
     try {
+      // POST /api/users/auth — на успехе используем ТОЛЬКО api user.id (UUID).
       const apiUser = await apiRequest<User>("/api/users/auth", {
         method: "POST",
         body: JSON.stringify({ telegramId, name: userName }),
@@ -172,7 +173,14 @@ export default function OnboardingScreen() {
       userId = apiUser.id;
       baseUser = apiUser;
     } catch {
-      // API недоступен — используем локальные id, продолжаем оффлайн
+      // API недоступен — fallback к локальному id (НЕ-UUID, помечает оффлайн-режим).
+      userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      baseUser = {
+        id: userId,
+        telegramId,
+        rating: 0,
+        createdAt: new Date().toISOString(),
+      };
     }
 
     const user: User = {
@@ -188,6 +196,14 @@ export default function OnboardingScreen() {
       rating: baseUser.rating ?? 0,
       createdAt: baseUser.createdAt ?? new Date().toISOString(),
     };
+
+    if (address) {
+      try {
+        await AsyncStorage.setItem("@pernatye_address", address);
+      } catch {
+        // ignore — адрес — вспомогательное поле
+      }
+    }
 
     const birdId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const bird: Bird = {
@@ -449,77 +465,85 @@ export default function OnboardingScreen() {
             <Text style={[styles.stepDesc, { color: colors.mutedForeground }]}>
               Расскажите о себе — это поможет найти вас соседям
             </Text>
-            {locationMethod === "auto" && lat !== undefined && lng !== undefined ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: colors.secondary,
-                  borderRadius: 12,
-                  padding: 12,
-                  width: "100%",
-                  marginBottom: 12,
+            <View
+              style={{
+                width: "100%",
+                height: 220,
+                borderRadius: 12,
+                overflow: "hidden",
+                marginBottom: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <NativeMap
+                region={{
+                  latitude: lat ?? MOSCOW_CENTER.latitude,
+                  longitude: lng ?? MOSCOW_CENTER.longitude,
                 }}
+                zoom={14}
+                onMapPress={({ latitude, longitude }) =>
+                  updateMarker(latitude, longitude)
+                }
+                markers={
+                  lat !== undefined && lng !== undefined
+                    ? ([
+                        {
+                          id: "me",
+                          latitude: lat,
+                          longitude: lng,
+                          title: "Ваше место",
+                          markerColor: colors.primary,
+                          draggable: true,
+                        },
+                      ] as MarkerData[])
+                    : []
+                }
+              />
+            </View>
+            <Text
+              style={{
+                width: "100%",
+                color: colors.foreground,
+                fontFamily: "Inter_500Medium",
+                fontSize: 14,
+                marginBottom: 4,
+                textAlign: "center",
+              }}
+            >
+              {addressLoading
+                ? "Определяем адрес…"
+                : address || "Нажмите на карту, чтобы выбрать место"}
+            </Text>
+            {lat !== undefined && lng !== undefined && (
+              <TouchableOpacity
+                style={{
+                  alignSelf: "stretch",
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  marginBottom: 12,
+                  backgroundColor: locationConfirmed
+                    ? colors.secondary
+                    : colors.primary,
+                }}
+                onPress={() => {
+                  setLocationConfirmed(true);
+                  Haptics.selectionAsync();
+                }}
+                activeOpacity={0.85}
               >
-                <Text style={{ fontSize: 20 }}>📍</Text>
                 <Text
                   style={{
-                    color: colors.foreground,
-                    marginLeft: 8,
-                    flex: 1,
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 13,
+                    color: locationConfirmed ? colors.foreground : "#fff",
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 14,
                   }}
                 >
-                  Местоположение определено автоматически
+                  {locationConfirmed ? "✓ Место сохранено" : "Использовать это место"}
                 </Text>
-                <TouchableOpacity onPress={() => setLocationMethod("manual")}>
-                  <Text
-                    style={{
-                      color: colors.primary,
-                      fontSize: 13,
-                      fontFamily: "Inter_500Medium",
-                    }}
-                  >
-                    Изменить
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : locationMethod === "manual" ? (
-              <View style={{ width: "100%", marginBottom: 4 }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      backgroundColor: colors.card,
-                      marginBottom: 6,
-                    },
-                  ]}
-                  placeholder="Введите адрес или район (например: м. Арбат)"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={addressInput}
-                  onChangeText={setAddressInput}
-                  onEndEditing={() => geocodeAddress(addressInput)}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {lat !== undefined && lng !== undefined && (
-                  <Text
-                    style={{
-                      color: colors.mutedForeground,
-                      fontSize: 12,
-                      fontFamily: "Inter_400Regular",
-                      marginBottom: 8,
-                      textAlign: "center",
-                    }}
-                  >
-                    📍 Координаты определены: {lat.toFixed(4)}, {lng.toFixed(4)}
-                  </Text>
-                )}
-              </View>
-            ) : null}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.input, styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
               onPress={() => setShowDistricts(!showDistricts)}

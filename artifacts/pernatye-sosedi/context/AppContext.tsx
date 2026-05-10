@@ -151,6 +151,9 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+const isValidUUID = (id: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 const STORAGE_KEYS = {
   user: "@pernatye_user",
   userId: "@pernatye_user_id",
@@ -500,8 +503,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const loadNeighbors = async () => {
       try {
         const data = await apiRequest<User[]>("/api/users?city=Москва");
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data) && data.length >= 2) {
           setNeighbors(data);
+        } else if (Array.isArray(data)) {
+          setNeighbors([...data, ...NEIGHBORS_WITH_SIT_TYPES].slice(0, 20));
         }
       } catch {
         // API недоступен — используем мок-данные
@@ -550,6 +555,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCurrentUserState(user);
     await AsyncStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
     await AsyncStorage.setItem(STORAGE_KEYS.userId, user.id);
+    if (!isValidUUID(user.id)) {
+      // локальный (не-UUID) id — данные сохранены только локально
+      return;
+    }
     try {
       await apiRequest(
         `/api/users/${user.id}`,
@@ -581,7 +590,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
         return next;
       });
-      if (currentUser?.id) {
+      if (currentUser?.id && isValidUUID(currentUser.id)) {
         try {
           await apiRequest(
             "/api/birds",
@@ -606,7 +615,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
         return next;
       });
-      if (currentUser?.id) {
+      if (currentUser?.id && isValidUUID(currentUser.id) && isValidUUID(id)) {
         try {
           await apiRequest(
             `/api/birds/${id}`,
@@ -631,7 +640,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
         return next;
       });
-      if (currentUser?.id) {
+      if (currentUser?.id && isValidUUID(currentUser.id) && isValidUUID(id)) {
         try {
           await apiRequest(
             `/api/birds/${id}`,
@@ -653,7 +662,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.sitRequests, JSON.stringify(next));
         return next;
       });
-      if (currentUser?.id) {
+      if (currentUser?.id && isValidUUID(currentUser.id)) {
         try {
           await apiRequest(
             "/api/sit-requests",
