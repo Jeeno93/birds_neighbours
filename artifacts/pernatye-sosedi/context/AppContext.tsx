@@ -232,6 +232,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadOpenRequests();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const syncBirds = async () => {
+      if (!currentUser?.id || !isValidUUID(currentUser.id)) return;
+      try {
+        const apiBirds = await apiRequest<Bird[]>(
+          `/api/birds?userId=${currentUser.id}`
+        );
+        // Если за время запроса пользователь сменился (логаут / другой
+        // аккаунт) либо локально успели добавить птицу через addBird —
+        // не перетираем актуальный state устаревшим ответом.
+        if (cancelled) return;
+        if (apiBirds.length > 0) {
+          setBirds(apiBirds);
+          await AsyncStorage.setItem(
+            STORAGE_KEYS.birds,
+            JSON.stringify(apiBirds)
+          );
+        }
+      } catch {
+        // API недоступен — оставляем локальный кэш птиц
+      }
+    };
+    syncBirds();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.id]);
+
   const loadData = async () => {
     try {
       const [userStr, birdsStr, requestsStr, reviewsStr, onboardedStr] =
@@ -302,24 +331,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addBird = useCallback(
     async (bird: Bird) => {
-      setBirds((prev) => {
-        const next = [...prev, bird];
-        AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
-        return next;
-      });
-      if (currentUser?.id && isValidUUID(currentUser.id)) {
-        try {
-          await apiRequest(
-            "/api/birds",
-            {
-              method: "POST",
-              body: JSON.stringify(bird),
-            },
-            currentUser.id
-          );
-        } catch {
-          // API недоступен — данные только локально
-        }
+      try {
+        // Бэкенд присваивает свой UUID; используем птицу из ответа,
+        // чтобы локальный id совпадал с серверным и последующие
+        // PUT/DELETE/привязки к запросам шли по валидному UUID.
+        const savedBird = await apiRequest<Bird>(
+          "/api/birds",
+          {
+            method: "POST",
+            body: JSON.stringify(bird),
+          },
+          currentUser?.id
+        );
+        // Бэкенд не сохраняет клиентские поля (например, `attachments`
+        // — фотографии лежат только локально), поэтому сливаем серверный
+        // ответ (с настоящим UUID) поверх исходной птицы и подстраховкой
+        // дочитываем `attachments` из локального объекта.
+        const merged: Bird = {
+          ...bird,
+          ...savedBird,
+          attachments: savedBird.attachments ?? bird.attachments,
+        };
+        setBirds((prev) => {
+          const next = [...prev, merged];
+          AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
+          return next;
+        });
+      } catch {
+        // API недоступен — сохраняем птицу локально с её исходным id
+        setBirds((prev) => {
+          const next = [...prev, bird];
+          AsyncStorage.setItem(STORAGE_KEYS.birds, JSON.stringify(next));
+          return next;
+        });
       }
     },
     [currentUser?.id]

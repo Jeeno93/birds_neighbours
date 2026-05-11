@@ -289,7 +289,8 @@ await apiRequest(
 | `AppContext.tsx` (`useEffect`, реагирует на `currentUser?.id`) | `GET /api/users?city=Москва` | Загружает реальных соседей. Из ответа отфильтровывается сам текущий пользователь. На сетевой ошибке — `setNeighbors([])`, никаких мок-фоллбэков. |
 | `app/neighbor/[id].tsx` (`useEffect` по `id`) | `GET /api/users/:id`, `GET /api/birds?userId=:id`, `GET /api/reviews?toUserId=:id` | Профиль конкретного птичника: сама карточка, его птицы и отзывы. Если соседа нет в кэше `neighbors`, пока идёт `GET /api/users/:id` показывается `ActivityIndicator`. На 404/ошибку — экран «Птичник не найден». |
 | `AppContext.tsx` (`setCurrentUser`) | `PUT /api/users/:id` | Синхронизирует профиль (`name, district, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets`). Вызывается также неявно из `updateHelpStatus`, `updateOtherPets`, `updateSitTypes`, `updateCapabilities`. |
-| `AppContext.tsx` (`addBird`) | `POST /api/birds` | После записи в AsyncStorage. |
+| `AppContext.tsx` (`useEffect`, реагирует на `currentUser?.id`) | `GET /api/birds?userId=:id` | Синхронизация птиц при логине: если бэкенд вернул непустой массив, локальный кэш `@pernatye_birds` перезаписывается серверной версией. Это подтягивает птиц после переустановки приложения / входа на новом устройстве. На сетевой ошибке локальный кэш не трогаем. |
+| `AppContext.tsx` (`addBird`) | `POST /api/birds` | Сначала POST на сервер: ответ (с настоящим UUID) кладём в state и AsyncStorage — это гарантирует, что у птицы локальный id == серверному, и последующие `PUT/DELETE/api/sit-requests` идут по валидному UUID. На сетевой ошибке — fallback: сохраняем переданную птицу локально с её исходным id. |
 | `AppContext.tsx` (`updateBird`) | `PUT /api/birds/:id` | После записи в AsyncStorage. |
 | `AppContext.tsx` (`deleteBird`) | `DELETE /api/birds/:id` | После удаления локально. |
 | `AppContext.tsx` (`addSitRequest`) | `POST /api/sit-requests` | После записи в AsyncStorage. |
@@ -299,7 +300,7 @@ await apiRequest(
 ### Поведение при отсутствии бэкенда
 
 - Онбординг: при успехе `POST /api/users/auth` используется **только** `apiUser.id` (UUID); локальный fallback-id генерируется **исключительно** в `catch`-ветке, когда API недоступен. Это гарантирует, что в `@pernatye_user_id` лежит настоящий UUID, если сервер ответил.
-- В `AppContext` все API-методы (`setCurrentUser`, `addBird`, `updateBird`, `deleteBird`, `addSitRequest`) перед запросом проверяют `isValidUUID(currentUser.id)` (regex `^[0-9a-f]{8}-…-[0-9a-f]{12}$`). При локальном (НЕ-UUID) id данные сохраняются только в AsyncStorage, без обращения к API — это не даёт серверу падать на «invalid uuid» и поддерживает чистый оффлайн-режим.
+- В `AppContext` API-методы (`setCurrentUser`, `updateBird`, `deleteBird`, `addSitRequest`) и фоновые синхронизации (`syncBirds`) перед запросом проверяют `isValidUUID(currentUser.id)` (regex `^[0-9a-f]{8}-…-[0-9a-f]{12}$`). При локальном (НЕ-UUID) id данные сохраняются только в AsyncStorage, без обращения к API — это не даёт серверу падать на «invalid uuid» и поддерживает чистый оффлайн-режим. Исключение — `addBird`: он всегда пытается POST первым, чтобы получить серверный UUID; при отсутствии валидного `currentUser.id` запрос всё равно отправится без `x-user-id` и упадёт в catch-ветку с локальным сохранением.
 - Все CRUD-операции: данные сохраняются в AsyncStorage даже при сетевой ошибке, исключение проглатывается.
 - Соседи на карте: если `GET /api/users` упал — список пустой (мок-фоллбэк удалён). Счётчик «N птичников в Москве» отражает реальное `neighbors.length`.
 
