@@ -24,6 +24,18 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/migrate002", async (_req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE sit_requests
+      ADD COLUMN IF NOT EXISTS contact_telegram TEXT;
+    `);
+    res.json({ success: true, message: "Migration 002 applied" });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 async function start(): Promise<void> {
   const client = await pool.connect();
   client.release();
