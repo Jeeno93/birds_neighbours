@@ -1,7 +1,9 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
+  Alert,
   FlatList,
   Platform,
   StyleSheet,
@@ -17,7 +19,32 @@ import { useColors } from "@/hooks/useColors";
 export default function SitRequestsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { sitRequests, birds } = useApp();
+  const { sitRequests, birds, updateSitRequest } = useApp();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const handleMarkMatched = (id: string) => {
+    if (pendingId) return;
+    Alert.alert(
+      "Закрыть запрос?",
+      "Подтвердите, что вы нашли ситтера. Запрос исчезнет из общей карты передержек.",
+      [
+        { text: "Отмена", style: "cancel" },
+        {
+          text: "Да, нашёл",
+          style: "default",
+          onPress: async () => {
+            setPendingId(id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            try {
+              await updateSitRequest(id, { status: "matched" });
+            } finally {
+              setPendingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
 
@@ -148,6 +175,25 @@ export default function SitRequestsScreen() {
                   Найти птичника
                 </Text>
               </TouchableOpacity>
+              {item.status === "open" && (
+                <TouchableOpacity
+                  style={[
+                    styles.matchedBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pendingId === item.id ? 0.6 : 1,
+                    },
+                  ]}
+                  onPress={() => handleMarkMatched(item.id)}
+                  disabled={pendingId === item.id}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="check" size={14} color="#fff" />
+                  <Text style={styles.matchedBtnText}>
+                    {pendingId === item.id ? " Сохраняем…" : " Нашёл ситтера"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           );
         }}
@@ -219,6 +265,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   findBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  matchedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    borderRadius: 10,
+    gap: 4,
+    marginTop: 4,
+  },
+  matchedBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
   emptyState: { alignItems: "center", paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   emptyDesc: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, paddingHorizontal: 32 },

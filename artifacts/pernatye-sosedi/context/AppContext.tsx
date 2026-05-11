@@ -721,8 +721,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.sitRequests, JSON.stringify(next));
         return next;
       });
+      // Если сменился статус — синхронно убираем/добавляем запрос в слой
+      // открытых передержек, чтобы маркер на карте пропал сразу.
+      if (data.status !== undefined) {
+        if (data.status === "open") {
+          // Запрос вернулся в open (например, после reopen) — добавляем
+          // или обновляем его в слое открытых передержек.
+          setSitRequests((current) => {
+            const source = current.find((r) => r.id === id);
+            if (source) {
+              setOpenRequests((prev) =>
+                prev.some((r) => r.id === id)
+                  ? prev.map((r) => (r.id === id ? source : r))
+                  : [source, ...prev]
+              );
+            }
+            return current;
+          });
+        } else {
+          setOpenRequests((prev) => prev.filter((r) => r.id !== id));
+        }
+      } else {
+        setOpenRequests((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...data, id: r.id } : r))
+        );
+      }
+      // Серверная синхронизация. Для статуса используем выделенный
+      // эндпоинт — он один умеет менять status под requireAuth.
+      if (!isValidUUID(id) || !currentUser?.id || !isValidUUID(currentUser.id)) {
+        return;
+      }
+      try {
+        if (data.status !== undefined) {
+          await apiRequest(
+            `/api/sit-requests/${id}/status`,
+            {
+              method: "PUT",
+              body: JSON.stringify({ status: data.status }),
+            },
+            currentUser.id
+          );
+        }
+        const { status: _status, ...rest } = data;
+        if (Object.keys(rest).length > 0) {
+          await apiRequest(
+            `/api/sit-requests/${id}`,
+            {
+              method: "PUT",
+              body: JSON.stringify(rest),
+            },
+            currentUser.id
+          );
+        }
+      } catch {
+        // API недоступен — данные сохранены локально, маркер всё равно
+        // обновится после следующей перезагрузки openRequests с сервера.
+      }
     },
-    []
+    [currentUser?.id]
   );
 
   const addReview = useCallback(async (review: Review) => {
