@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.pernatyesosedi.app",
-      "versionCode": 15
+      "versionCode": 17
     },
     "web": {
       "favicon": "./assets/images/icon.png"

@@ -7,7 +7,6 @@ import { apiRequest } from "@/api/client";
 import {
   Linking as RNLinking,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,7 +14,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  BirdSpecies,
   SIT_TYPE_SHORT,
   SitRequest,
   User,
@@ -46,38 +44,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-const SPECIES_FILTER: { key: BirdSpecies | "all"; label: string }[] = [
-  { key: "all", label: "Все" },
-  { key: "parrot_corella", label: "Корелла" },
-  { key: "parrot_budgie", label: "Волнистый" },
-  { key: "canary", label: "Канарейка" },
-  { key: "pigeon", label: "Голубь" },
-  { key: "other", label: "Другие" },
-];
-
-const MOCK_USER_BIRDS: Record<string, BirdSpecies[]> = {
-  n1: ["parrot_corella", "parrot_budgie"],
-  n2: ["canary"],
-  n3: ["parrot_budgie", "parrot_budgie"],
-  n4: ["pigeon", "parrot_corella"],
-  n5: ["canary", "other"],
-  n6: ["parrot_pyrrhura"],
-  n7: ["parrot_lovebird"],
-  n8: ["parrot_jaco"],
-  n9: ["parrot_rosella", "canary"],
-  n10: ["parrot_amazon"],
-  n11: ["parrot_alexandrine", "parrot_budgie"],
-  n12: ["parrot_ara"],
-  n13: ["finch"],
-  n14: ["parrot_kakadu", "parrot_corella"],
-  n15: ["parrot_eclectus"],
-  n16: ["parakeet_kakariki", "parrot_budgie"],
-  n17: ["parrot_jaco", "parrot_lovebird"],
-  n18: ["pigeon"],
-  n19: ["parrot_pyrrhura", "canary"],
-  n20: ["other"],
-};
-
 const MOSCOW_REGION: Region = {
   latitude: 55.7558,
   longitude: 37.6173,
@@ -90,16 +56,14 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const { neighbors, sitRequests, openRequests, currentUser } = useApp();
 
-  const [filterSpecies, setFilterSpecies] = useState<BirdSpecies | "all">("all");
   const [mapLayer, setMapLayer] = useState<"community" | "requests">("community");
   const [selectedRequest, setSelectedRequest] = useState<SitRequest | null>(null);
   const [fetchedAuthor, setFetchedAuthor] = useState<User | null>(null);
 
-  const filtered = neighbors.filter((n) => {
-    if (filterSpecies === "all") return true;
-    const birds = MOCK_USER_BIRDS[n.id] || [];
-    return birds.includes(filterSpecies as BirdSpecies);
-  });
+  // Без мок-данных по птицам у каждого соседа фильтр по виду применить
+  // нечем (API ещё не отдаёт сводку птиц по соседу). Пока показываем
+  // всех — фильтр-чипсы убраны из UI ниже.
+  const filtered = neighbors;
 
   const activeRequest = sitRequests
     .filter((r) => r.status === "open")
@@ -306,42 +270,6 @@ export default function MapScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-
-      {mapLayer === "community" && (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={[styles.filterBar, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}
-        contentContainerStyle={styles.filterBarContent}
-      >
-        {SPECIES_FILTER.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: filterSpecies === f.key ? colors.primary : colors.card,
-                borderColor: filterSpecies === f.key ? colors.primary : colors.border,
-              },
-            ]}
-            onPress={() => {
-              setFilterSpecies(f.key);
-              Haptics.selectionAsync();
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                { color: filterSpecies === f.key ? "#fff" : colors.foreground },
-              ]}
-            >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      )}
 
       <View
         style={[
@@ -562,25 +490,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-  },
-  filterBar: {
-    borderBottomWidth: 1,
-    flexGrow: 0,
-  },
-  filterBarContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  chipText: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
   },
   cityCounter: {
     flexDirection: "row",
