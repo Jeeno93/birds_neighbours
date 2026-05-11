@@ -41,6 +41,19 @@ export default function NewRequestScreen() {
   const [comment, setComment] = useState("");
   const [showDistricts, setShowDistricts] = useState(false);
 
+  // У юзеров без настоящего telegram_id (моковый id вида `tg_…`) надо
+  // отдельно собрать username — иначе ситтеру некуда написать.
+  const needsTelegramInput =
+    !currentUser?.telegramId || currentUser.telegramId.startsWith("tg_");
+  const initialTelegram =
+    currentUser?.telegramId && !currentUser.telegramId.startsWith("tg_")
+      ? currentUser.telegramId
+      : "";
+  const [telegramUsername, setTelegramUsername] = useState(initialTelegram);
+
+  const sanitizeTgHandle = (raw: string): string =>
+    raw.trim().replace(/^@+/, "").replace(/[^a-zA-Z0-9_]/g, "");
+
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
 
   const toggleBird = (id: string) => {
@@ -72,6 +85,14 @@ export default function NewRequestScreen() {
       Alert.alert("Ошибка", "Укажите даты отъезда");
       return;
     }
+    const contactTelegram = sanitizeTgHandle(telegramUsername);
+    if (needsTelegramInput && !contactTelegram) {
+      Alert.alert(
+        "Укажите Telegram",
+        "Без username ситтеры не смогут с вами связаться."
+      );
+      return;
+    }
 
     const needsMedication = selectedBirds.some((b) => b.needsMedication);
     const matchedNeighbors = neighbors.filter((n) => {
@@ -90,6 +111,7 @@ export default function NewRequestScreen() {
       dateTo,
       district,
       comment: comment.trim(),
+      contactTelegram,
       status: "open",
       createdAt: new Date().toISOString(),
     };
@@ -319,6 +341,40 @@ export default function NewRequestScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        )}
+
+        {needsTelegramInput && (
+          <>
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+              Telegram для связи *
+            </Text>
+            <TextInput
+              style={[
+                styles.dateInput,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  color: colors.foreground,
+                },
+              ]}
+              placeholder="username (без @)"
+              placeholderTextColor={colors.mutedForeground}
+              value={telegramUsername}
+              onChangeText={setTelegramUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text
+              style={{
+                color: colors.mutedForeground,
+                fontSize: 12,
+                fontFamily: "Inter_400Regular",
+                marginTop: 4,
+              }}
+            >
+              Ситтеры свяжутся с вами через Telegram
+            </Text>
+          </>
         )}
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Комментарий</Text>

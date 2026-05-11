@@ -189,9 +189,8 @@ export default function MapScreen() {
       (fetchedAuthor?.id === selectedRequest.userId ? fetchedAuthor : null)
     : null;
 
-  // Если автор открытого запроса не пришёл в `neighbors` (например, он живёт
-  // вне Москвы или в выдачу не попал), подгружаем его карточку отдельно —
-  // иначе кнопка «Откликнуться» так и останется задизейбленной.
+  // Подгружаем автора, если его нет в `neighbors` — нужен только для
+  // отображения имени; контакт берём из `selectedRequest.contactTelegram`.
   useEffect(() => {
     if (!selectedRequest) return;
     if (neighbors.some((n) => n.id === selectedRequest.userId)) return;
@@ -202,7 +201,7 @@ export default function MapScreen() {
         const data = await apiRequest<User>(`/api/users/${selectedRequest.userId}`);
         if (!cancelled && data?.id) setFetchedAuthor(data);
       } catch {
-        // игнорируем — UI просто покажет «Контакт недоступен»
+        // игнорируем — UI просто покажет «Птичник» без имени
       }
     })();
     return () => {
@@ -224,11 +223,15 @@ export default function MapScreen() {
   const sanitizeTgHandle = (raw: string): string =>
     raw.trim().replace(/^@+/, "").replace(/[^a-zA-Z0-9_]/g, "");
 
+  // Контакт берём из самого запроса — его автор указал явно при создании.
+  // На профиль автора больше не полагаемся: мок-`tg_<n>` не открыть в TG.
+  const contactHandle = sanitizeTgHandle(selectedRequest?.contactTelegram ?? "");
+  const hasContact = Boolean(contactHandle);
+
   const handleRespond = async () => {
-    const handle = sanitizeTgHandle(requestAuthor?.telegramId ?? "");
-    if (!handle) return;
-    const tg = `tg://resolve?domain=${handle}`;
-    const web = `https://t.me/${encodeURIComponent(handle)}`;
+    if (!contactHandle) return;
+    const tg = `tg://resolve?domain=${contactHandle}`;
+    const web = `https://t.me/${encodeURIComponent(contactHandle)}`;
     try {
       const supported = await Linking.canOpenURL(tg);
       await RNLinking.openURL(supported ? tg : web);
@@ -236,8 +239,6 @@ export default function MapScreen() {
       RNLinking.openURL(web).catch(() => {});
     }
   };
-
-  const hasContact = Boolean(sanitizeTgHandle(requestAuthor?.telegramId ?? ""));
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -443,7 +444,7 @@ export default function MapScreen() {
             >
               <Feather name="send" size={14} color="#fff" />
               <Text style={styles.hintBtnText}>
-                {hasContact ? " Откликнуться в Telegram" : " Контакт недоступен"}
+                {hasContact ? " Откликнуться в Telegram" : " Контакт не указан"}
               </Text>
             </TouchableOpacity>
           </View>

@@ -15,6 +15,7 @@ function rowToRequest(row: any) {
     dateTo: row.date_to,
     district: row.district,
     comment: row.comment,
+    contactTelegram: row.contact_telegram ?? "",
     status: row.status,
     createdAt: row.created_at,
   };
@@ -49,7 +50,8 @@ router.get("/", async (req: Request, res: Response) => {
 // POST /api/sit-requests
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
-    const { birds, sitType, dateFrom, dateTo, district, comment, status } = req.body ?? {};
+    const { birds, sitType, dateFrom, dateTo, district, comment, contactTelegram, status } =
+      req.body ?? {};
 
     if (!dateFrom || !dateTo) {
       res.status(400).json({ error: "dateFrom and dateTo are required" });
@@ -58,8 +60,8 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
     const result = await pool.query(
       `INSERT INTO sit_requests (
-        user_id, birds, sit_type, date_from, date_to, district, comment, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        user_id, birds, sit_type, date_from, date_to, district, comment, contact_telegram, status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         req.userId,
         JSON.stringify(birds ?? []),
@@ -68,6 +70,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         dateTo,
         district ?? "",
         comment ?? "",
+        contactTelegram ?? "",
         status ?? "open",
       ]
     );
@@ -100,6 +103,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
       dateTo: { col: "date_to" },
       district: { col: "district" },
       comment: { col: "comment" },
+      contactTelegram: { col: "contact_telegram" },
       status: { col: "status" },
     };
 

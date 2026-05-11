@@ -114,6 +114,12 @@ export interface SitRequest {
   dateTo: string;
   district: string;
   comment: string;
+  /**
+   * Telegram-username автора запроса для связи с ситтерами. Заполняется
+   * на форме создания запроса, если у юзера нет настоящего telegram_id
+   * (логин типа `tg_<n>` — имитация для веба/демо).
+   */
+  contactTelegram?: string;
   status: "open" | "matched" | "closed";
   createdAt: string;
 }
