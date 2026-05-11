@@ -58,6 +58,17 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
+    const convertDate = (dateStr: string): string => {
+      if (!dateStr) return dateStr;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+      const parts = dateStr.split(".");
+      if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      return dateStr;
+    };
+
+    const dateFromConverted = convertDate(dateFrom);
+    const dateToConverted = convertDate(dateTo);
+
     const result = await pool.query(
       `INSERT INTO sit_requests (
         user_id, birds, sit_type, date_from, date_to, district, comment, contact_telegram, status
@@ -66,8 +77,8 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         req.userId,
         JSON.stringify(birds ?? []),
         sitType ?? "full",
-        dateFrom,
-        dateTo,
+        dateFromConverted,
+        dateToConverted,
         district ?? "",
         comment ?? "",
         contactTelegram ?? "",
