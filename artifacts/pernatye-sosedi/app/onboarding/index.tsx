@@ -85,6 +85,10 @@ export default function OnboardingScreen() {
 
   const [selectedSpecies, setSelectedSpecies] = useState<BirdSpecies>("parrot_budgie");
   const [birdName, setBirdName] = useState("");
+  const [addedBirds, setAddedBirds] = useState<
+    Array<{ species: BirdSpecies; name: string }>
+  >([]);
+  const [showBirdForm, setShowBirdForm] = useState(true);
   const [food, setFood] = useState("");
   const [schedule, setSchedule] = useState("");
   const [diseases, setDiseases] = useState("");
@@ -209,27 +213,58 @@ export default function OnboardingScreen() {
       }
     }
 
-    const birdId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const bird: Bird = {
-      id: birdId,
-      userId,
-      species: selectedSpecies,
-      name: birdName || "Моя птица",
-      ageMonths: undefined,
-      food: food || "Специальный корм для вида",
-      schedule: schedule || "Кормить утром и вечером",
-      diseases: diseases ? diseases.split(",").map((d) => d.trim()) : [],
-      medications: medications || "",
-      catchNotes: catchNotes || "",
-      vetNotes: vetNotes || "",
-      sitLocation,
-      createdAt: new Date().toISOString(),
-    };
-
     await setCurrentUser(user);
-    await addBird(bird);
+
+    // Если пользователь оставил незакоммиченное имя в форме — досохраняем.
+    const birdsToSave = [...addedBirds];
+    if (showBirdForm && birdName.trim()) {
+      birdsToSave.push({ species: selectedSpecies, name: birdName.trim() });
+    }
+
+    // Карточка ухода (food/schedule/...) применяется ко всем добавленным
+    // птицам. Если птиц нет — этот шаг просто пропускается, пользователь
+    // сможет добавить птиц позже на вкладке «Птицы».
+    for (const b of birdsToSave) {
+      const birdId =
+        Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const bird: Bird = {
+        id: birdId,
+        userId,
+        species: b.species,
+        name: b.name,
+        ageMonths: undefined,
+        food: food || "Специальный корм для вида",
+        schedule: schedule || "Кормить утром и вечером",
+        diseases: diseases ? diseases.split(",").map((d) => d.trim()) : [],
+        medications: medications || "",
+        catchNotes: catchNotes || "",
+        vetNotes: vetNotes || "",
+        sitLocation,
+        createdAt: new Date().toISOString(),
+      };
+      await addBird(bird);
+    }
+
     await completeOnboarding();
     router.replace("/(tabs)/map");
+  };
+
+  const handleAddBird = () => {
+    const trimmed = birdName.trim();
+    if (!trimmed) return;
+    setAddedBirds((prev) => [
+      ...prev,
+      { species: selectedSpecies, name: trimmed },
+    ]);
+    setBirdName("");
+    setSelectedSpecies("parrot_budgie");
+    setShowBirdForm(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleRemoveBird = (index: number) => {
+    setAddedBirds((prev) => prev.filter((_, i) => i !== index));
+    Haptics.selectionAsync();
   };
 
   const progressWidth = progressAnim.interpolate({
@@ -316,55 +351,161 @@ export default function OnboardingScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={[styles.stepTitle, { color: colors.foreground }]}>
-              Моя птица
+              Мои птицы
             </Text>
             <Text style={[styles.stepDesc, { color: colors.mutedForeground }]}>
-              Выберите вид и введите имя
+              Добавьте птиц или пропустите — это можно сделать позже
             </Text>
-            <View style={styles.speciesGrid}>
-              {SPECIES_LIST.map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[
-                    styles.speciesBtn,
-                    {
-                      backgroundColor:
-                        selectedSpecies === s ? colors.primary : colors.card,
-                      borderColor:
-                        selectedSpecies === s ? colors.primary : colors.border,
-                    },
-                  ]}
-                  onPress={() => {
-                    setSelectedSpecies(s);
-                    Haptics.selectionAsync();
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <BirdSpeciesIcon species={s} size={32} />
-                  <Text
+
+            {addedBirds.length > 0 && (
+              <View style={{ width: "100%", marginBottom: 12 }}>
+                {addedBirds.map((b, i) => (
+                  <View
+                    key={`${b.name}-${i}`}
                     style={[
-                      styles.speciesBtnLabel,
-                      {
-                        color:
-                          selectedSpecies === s
-                            ? "#fff"
-                            : colors.foreground,
-                      },
+                      styles.birdCard,
+                      { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
-                    numberOfLines={2}
                   >
-                    {SPECIES_LABELS[s]}
+                    <BirdSpeciesIcon species={b.species} size={36} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text
+                        style={{
+                          color: colors.foreground,
+                          fontFamily: "Inter_600SemiBold",
+                          fontSize: 15,
+                        }}
+                      >
+                        {b.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: colors.mutedForeground,
+                          fontFamily: "Inter_400Regular",
+                          fontSize: 13,
+                          marginTop: 2,
+                        }}
+                      >
+                        {SPECIES_LABELS[b.species]}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveBird(i)}
+                      style={styles.birdCardRemove}
+                      hitSlop={8}
+                    >
+                      <Feather name="x" size={18} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {showBirdForm ? (
+              <>
+                <View style={styles.speciesGrid}>
+                  {SPECIES_LIST.map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.speciesBtn,
+                        {
+                          backgroundColor:
+                            selectedSpecies === s ? colors.primary : colors.card,
+                          borderColor:
+                            selectedSpecies === s ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => {
+                        setSelectedSpecies(s);
+                        Haptics.selectionAsync();
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <BirdSpeciesIcon species={s} size={32} />
+                      <Text
+                        style={[
+                          styles.speciesBtnLabel,
+                          {
+                            color:
+                              selectedSpecies === s
+                                ? "#fff"
+                                : colors.foreground,
+                          },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {SPECIES_LABELS[s]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
+                  placeholder="Имя птицы"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={birdName}
+                  onChangeText={setBirdName}
+                />
+                <TouchableOpacity
+                  style={{
+                    alignSelf: "stretch",
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    marginTop: 8,
+                    backgroundColor: birdName.trim()
+                      ? colors.primary
+                      : colors.secondary,
+                  }}
+                  onPress={handleAddBird}
+                  activeOpacity={0.85}
+                  disabled={!birdName.trim()}
+                >
+                  <Text
+                    style={{
+                      color: birdName.trim() ? "#fff" : colors.mutedForeground,
+                      fontFamily: "Inter_600SemiBold",
+                      fontSize: 15,
+                    }}
+                  >
+                    Добавить птицу
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Имя птицы"
-              placeholderTextColor={colors.mutedForeground}
-              value={birdName}
-              onChangeText={setBirdName}
-            />
+              </>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  alignSelf: "stretch",
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: colors.primary,
+                  alignItems: "center",
+                  marginTop: 4,
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+                onPress={() => {
+                  setShowBirdForm(true);
+                  Haptics.selectionAsync();
+                }}
+                activeOpacity={0.85}
+              >
+                <Feather name="plus" size={18} color={colors.primary} />
+                <Text
+                  style={{
+                    color: colors.primary,
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 15,
+                  }}
+                >
+                  Добавить ещё птицу
+                </Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         );
 
@@ -602,7 +743,8 @@ export default function OnboardingScreen() {
       ? "Начать"
       : "Далее";
 
-  const canSkip = step >= 3 && step < totalSteps - 1;
+  // Шаги 2 (Птицы), 3 (Карточка ухода) и 4 (Профиль) — все опциональны.
+  const canSkip = step >= 2 && step < totalSteps - 1;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -631,7 +773,19 @@ export default function OnboardingScreen() {
         ]}
       >
         {canSkip && (
-          <TouchableOpacity onPress={goNext} style={styles.skipBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              // На шаге птиц «Пропустить» означает «не добавлять никаких
+              // птиц» — чистим незакоммиченное имя, чтобы finish() его
+              // не досохранил.
+              if (step === 2) {
+                setBirdName("");
+                setShowBirdForm(false);
+              }
+              goNext();
+            }}
+            style={styles.skipBtn}
+          >
             <Text style={[styles.skipLabel, { color: colors.mutedForeground }]}>
               Пропустить
             </Text>
@@ -728,6 +882,22 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     marginBottom: 16,
+    justifyContent: "center",
+  },
+  birdCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  birdCardRemove: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
     justifyContent: "center",
   },
   speciesBtn: {
