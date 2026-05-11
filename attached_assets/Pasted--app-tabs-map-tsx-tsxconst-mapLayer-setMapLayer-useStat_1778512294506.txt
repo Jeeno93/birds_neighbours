@@ -1,0 +1,43 @@
+В app/(tabs)/map.tsx добавь переключатель сверху:
+tsxconst [mapLayer, setMapLayer] = useState<'community' | 'requests'>('community');
+Переключатель — две кнопки как таблетка:
+tsx<View style={{ flexDirection: 'row', backgroundColor: colors.secondary,
+  borderRadius: 20, padding: 3, margin: 16 }}>
+  <TouchableOpacity
+    style={{ flex: 1, paddingVertical: 8, borderRadius: 17,
+      backgroundColor: mapLayer === 'community' ? colors.primary : 'transparent',
+      alignItems: 'center' }}
+    onPress={() => setMapLayer('community')}>
+    <Text style={{ color: mapLayer === 'community' ? 'white' : colors.foreground,
+      fontWeight: '600', fontSize: 14 }}>🐦 Птичники</Text>
+  </TouchableOpacity>
+  <TouchableOpacity
+    style={{ flex: 1, paddingVertical: 8, borderRadius: 17,
+      backgroundColor: mapLayer === 'requests' ? colors.primary : 'transparent',
+      alignItems: 'center' }}
+    onPress={() => setMapLayer('requests')}>
+    <Text style={{ color: mapLayer === 'requests' ? 'white' : colors.foreground,
+      fontWeight: '600', fontSize: 14 }}>📋 Передержки</Text>
+  </TouchableOpacity>
+</View>
+При mapLayer === 'community' — показывай маркеры соседей как сейчас.
+При mapLayer === 'requests' — загружай запросы на передержку через GET /api/sit-requests?status=open и показывай их маркерами. Цвет маркера — янтарный (#f59e0b). Тап на маркер открывает карточку запроса с деталями (даты, тип передержки, птицы, район). Кнопка «Откликнуться» открывает Telegram если username заполнен.
+В AppContext.tsx добавь загрузку всех открытых запросов:
+tsconst [openRequests, setOpenRequests] = useState<SitRequest[]>([]);
+
+useEffect(() => {
+  const loadRequests = async () => {
+    try {
+      const data = await apiRequest<SitRequest[]>('/api/sit-requests?status=open');
+      setOpenRequests(data);
+    } catch {}
+  };
+  loadRequests();
+}, []);
+В бэкенде artifacts/pernatye-sosedi-api/src/routes/requests.ts обнови GET /api/sit-requests — добавь фильтрацию по status если передан query param:
+tsconst { userId, status } = req.query;
+let query = 'SELECT * FROM sit_requests WHERE 1=1';
+const params: any[] = [];
+if (userId) { query += ` AND user_id = $${params.length+1}`; params.push(userId); }
+if (status) { query += ` AND status = $${params.length+1}`; params.push(status); }
+query += ' ORDER BY created_at DESC';

@@ -131,6 +131,7 @@ interface AppContextType {
   currentUser: User | null;
   birds: Bird[];
   sitRequests: SitRequest[];
+  openRequests: SitRequest[];
   reviews: Review[];
   neighbors: User[];
   isOnboarded: boolean;
@@ -508,6 +509,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUserState] = useState<User | null>(null);
   const [birds, setBirds] = useState<Bird[]>([]);
   const [sitRequests, setSitRequests] = useState<SitRequest[]>([]);
+  const [openRequests, setOpenRequests] = useState<SitRequest[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [neighbors, setNeighbors] = useState<User[]>(NEIGHBORS_WITH_SIT_TYPES);
   const [isOnboarded, setIsOnboarded] = useState(false);
@@ -531,6 +533,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     };
     loadNeighbors();
+  }, []);
+
+  useEffect(() => {
+    const loadOpenRequests = async () => {
+      try {
+        const data = await apiRequest<SitRequest[]>(
+          "/api/sit-requests?status=open"
+        );
+        if (Array.isArray(data)) setOpenRequests(data);
+      } catch {
+        // API недоступен — слой передержек просто будет пустой
+      }
+    };
+    loadOpenRequests();
   }, []);
 
   const loadData = async () => {
@@ -764,6 +780,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         currentUser,
         birds,
         sitRequests,
+        openRequests,
         reviews,
         neighbors,
         isOnboarded,

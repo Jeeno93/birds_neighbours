@@ -20,18 +20,25 @@ function rowToRequest(row: any) {
   };
 }
 
-// GET /api/sit-requests?userId=
+// GET /api/sit-requests?userId=&status=
 router.get("/", async (req: Request, res: Response) => {
   try {
     const userId = req.query.userId as string | undefined;
-    if (!userId) {
-      res.status(400).json({ error: "userId query param is required" });
-      return;
+    const status = req.query.status as string | undefined;
+
+    let query = "SELECT * FROM sit_requests WHERE 1=1";
+    const params: unknown[] = [];
+    if (userId) {
+      params.push(userId);
+      query += ` AND user_id = $${params.length}`;
     }
-    const result = await pool.query(
-      "SELECT * FROM sit_requests WHERE user_id = $1 ORDER BY created_at DESC",
-      [userId]
-    );
+    if (status) {
+      params.push(status);
+      query += ` AND status = $${params.length}`;
+    }
+    query += " ORDER BY created_at DESC";
+
+    const result = await pool.query(query, params);
     res.json(result.rows.map(rowToRequest));
   } catch (err) {
     console.error("GET /api/sit-requests error:", err);
