@@ -154,6 +154,24 @@ const AppContext = createContext<AppContextType | null>(null);
 const isValidUUID = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
+/**
+ * Достаёт «район» из адреса, который вернул Яндекс reverse-geocoder.
+ * Сначала ищем сегмент со словами «район/округ/поселение», иначе берём
+ * первый осмысленный сегмент (пропуская "Россия"). Используется чтобы
+ * автоматически заполнять `User.district` по координатам пикера —
+ * пользователь больше не выбирает район руками.
+ */
+export function extractDistrictFromAddress(address: string): string {
+  if (!address) return "";
+  const parts = address
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const districtPart = parts.find((p) => /район|округ|поселение/i.test(p));
+  if (districtPart) return districtPart;
+  return parts.find((p) => !/^Россия$/i.test(p)) || parts[0] || "";
+}
+
 const STORAGE_KEYS = {
   user: "@pernatye_user",
   userId: "@pernatye_user_id",

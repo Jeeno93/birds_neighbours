@@ -1,0 +1,82 @@
+Замени текущую реализацию выбора местоположения в онбординге и редактировании профиля на паттерн «карта под маркером» как в Яндекс Такси.
+1. Логика нового пикера
+Маркер всегда фиксирован по центру экрана. Двигается карта под ним — это решает проблему рывков (WebView перехватывал жесты скролла онбординга). Адрес обновляется через reverse geocoding после каждого окончания движения карты (moveend событие).
+2. Обнови NativeMap.tsx
+Добавь новый режим locationPicker через проп:
+tsinterface NativeMapProps {
+  region: Region;
+  markers?: MarkerData[];
+  onMarkerPress?: (id: string) => void;
+  onMapPress?: (coords: { latitude: number; longitude: number }) => void;
+  mode?: 'default' | 'locationPicker';
+  onLocationSelected?: (coords: { latitude: number; longitude: number }) => void;
+}
+В HTML карты для режима locationPicker:
+js// Маркер по центру — фиксированный через CSS, не через Яндекс API
+// Слушаем конец движения карты
+map.events.add('actionend', function() {
+  const center = map.getCenter();
+  window.ReactNativeWebView.postMessage(JSON.stringify({
+    type: 'centerChanged',
+    latitude: center[0],
+    longitude: center[1]
+  }));
+});
+
+// Кнопка геолокации
+document.getElementById('geoBtn').addEventListener('click', function() {
+  window.ReactNativeWebView.postMessage(JSON.stringify({
+    type: 'requestGeo'
+  }));
+});
+Фиксированный маркер по центру через HTML/CSS поверх карты:
+html<div id="centerMarker" style="
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  width: 32px;
+  height: 32px;
+  z-index: 1000;
+  pointer-events: none;
+">📍</div>
+
+<button id="geoBtn" style="
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: white;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 1000;
+">➤</button>
+В onMessage обработчике добавь:
+tsif (data.type === 'centerChanged' && props.onLocationSelected) {
+  props.onLocationSelected({ latitude: data.latitude, longitude: data.longitude });
+}
+if (data.type === 'requestGeo') {
+  // запрашиваем геолокацию и центрируем карту
+  Location.getCurrentPositionAsync({}).then(loc => {
+    // отправляем новый центр в WebView через инжект JS
+  });
+}
+3. Обнови онбординг app/onboarding/index.tsx шаг 4
+Убери ScrollView на этом шаге — верни обычный View. Карта должна занимать большую часть экрана (минимум 60% высоты).
+Структура экрана сверху вниз:
+[Адрес крупным текстом сверху]
+[Карта с фиксированным маркером по центру — flex: 1]
+[Кнопка "Использовать это место"]
+Убери поле выбора района — оно больше не нужно если есть карта.
+4. Обнови app/edit-profile.tsx
+Та же структура — карта на весь экран с фиксированным маркером. Убери поле «Район» из формы.
+5. Убери район из модели
+В AppContext.tsx — поле district оставь в типе (оно есть в БД) но заполняй его автоматически из reverse geocoding (первая часть адреса), не показывай пользователю отдельным полем.
+6. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+7. Увеличь versionCode до 15.
+8. Обнови DOCUMENTATION.md.

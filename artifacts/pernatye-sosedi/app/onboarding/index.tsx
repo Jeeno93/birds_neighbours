@@ -21,16 +21,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Bird,
   BirdSpecies,
-  MOSCOW_DISTRICTS,
   SIT_LOCATION_ICONS,
   SIT_LOCATION_LABELS,
   SPECIES_LABELS,
   SitLocation,
   User,
+  extractDistrictFromAddress,
   useApp,
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
-import NativeMap, { MarkerData } from "@/components/NativeMap";
+import NativeMap from "@/components/NativeMap";
 import { useColors } from "@/hooks/useColors";
 import { apiRequest } from "@/api/client";
 
@@ -92,12 +92,10 @@ export default function OnboardingScreen() {
   const [catchNotes, setCatchNotes] = useState("");
   const [vetNotes, setVetNotes] = useState("");
   const [sitLocation, setSitLocation] = useState<SitLocation>("flexible");
-  const [district, setDistrict] = useState("Арбат");
-  const [experienceYears, setExperienceYears] = useState("2");
-  const [helpStatus, setHelpStatus] = useState<"ready" | "sometimes" | "not_now">("ready");
+  const [experienceYears] = useState("2");
+  const [helpStatus] = useState<"ready" | "sometimes" | "not_now">("ready");
   const [userName, setUserName] = useState("Александр");
   const [telegramUsername, setTelegramUsername] = useState("");
-  const [showDistricts, setShowDistricts] = useState(false);
   const [lat, setLat] = useState<number | undefined>(undefined);
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [address, setAddress] = useState("");
@@ -118,17 +116,20 @@ export default function OnboardingScreen() {
     setAddressLoading(false);
   };
 
+  const [pickerInitialRegion, setPickerInitialRegion] = useState(MOSCOW_CENTER);
+
   const getLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const location = await Location.getCurrentPositionAsync({});
-        await updateMarker(location.coords.latitude, location.coords.longitude);
-      } else {
-        await updateMarker(MOSCOW_CENTER.latitude, MOSCOW_CENTER.longitude);
+        setPickerInitialRegion({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
       }
     } catch {
-      await updateMarker(MOSCOW_CENTER.latitude, MOSCOW_CENTER.longitude);
+      // не удалось — оставляем центр Москвы
     }
   };
 
@@ -183,12 +184,15 @@ export default function OnboardingScreen() {
       };
     }
 
+    const derivedDistrict =
+      extractDistrictFromAddress(address) || baseUser.district || "Москва";
+
     const user: User = {
       ...(baseUser as User),
       id: userId,
       telegramId: baseUser.telegramId ?? telegramId,
       name: userName,
-      district,
+      district: derivedDistrict,
       lat: lat ?? baseUser.lat,
       lng: lng ?? baseUser.lng,
       experienceYears: parseInt(experienceYears) || 2,
@@ -453,159 +457,96 @@ export default function OnboardingScreen() {
 
       case "profile":
         return (
-          <ScrollView
-            style={{ width }}
-            contentContainerStyle={{ width, paddingTop: topPad + 20, paddingHorizontal: 24, paddingBottom: 24, alignItems: "center", flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+          <View
+            style={{
+              width,
+              flex: 1,
+              paddingTop: topPad + 12,
+              paddingHorizontal: 16,
+              paddingBottom: 8,
+            }}
           >
-            <Text style={[styles.stepTitle, { color: colors.foreground }]}>
-              Профиль птичника
-            </Text>
-            <Text style={[styles.stepDesc, { color: colors.mutedForeground }]}>
-              Расскажите о себе — это поможет найти вас соседям
-            </Text>
-            <View
-              style={{
-                width: "100%",
-                height: 220,
-                borderRadius: 12,
-                overflow: "hidden",
-                marginBottom: 8,
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-            >
-              <NativeMap
-                region={{
-                  latitude: lat ?? MOSCOW_CENTER.latitude,
-                  longitude: lng ?? MOSCOW_CENTER.longitude,
-                }}
-                zoom={14}
-                onMapPress={({ latitude, longitude }) =>
-                  updateMarker(latitude, longitude)
-                }
-                markers={
-                  lat !== undefined && lng !== undefined
-                    ? ([
-                        {
-                          id: "me",
-                          latitude: lat,
-                          longitude: lng,
-                          title: "Ваше место",
-                          markerColor: colors.primary,
-                          draggable: true,
-                        },
-                      ] as MarkerData[])
-                    : []
-                }
-              />
-            </View>
             <Text
               style={{
-                width: "100%",
+                color: colors.foreground,
+                fontFamily: "Inter_700Bold",
+                fontSize: 20,
+                textAlign: "center",
+                marginBottom: 4,
+              }}
+            >
+              Где вы находитесь?
+            </Text>
+            <Text
+              style={{
                 color: colors.foreground,
                 fontFamily: "Inter_500Medium",
-                fontSize: 14,
-                marginBottom: 4,
+                fontSize: 15,
                 textAlign: "center",
+                marginBottom: 10,
+                minHeight: 40,
               }}
+              numberOfLines={2}
             >
               {addressLoading
                 ? "Определяем адрес…"
-                : address || "Нажмите на карту, чтобы выбрать место"}
+                : address || "Двигайте карту, чтобы выбрать место"}
             </Text>
-            {lat !== undefined && lng !== undefined && (
-              <TouchableOpacity
-                style={{
-                  alignSelf: "stretch",
-                  paddingVertical: 10,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  marginBottom: 12,
-                  backgroundColor: locationConfirmed
-                    ? colors.secondary
-                    : colors.primary,
-                }}
-                onPress={() => {
-                  setLocationConfirmed(true);
-                  Haptics.selectionAsync();
-                }}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={{
-                    color: locationConfirmed ? colors.foreground : "#fff",
-                    fontFamily: "Inter_500Medium",
-                    fontSize: 14,
-                  }}
-                >
-                  {locationConfirmed ? "✓ Место сохранено" : "Использовать это место"}
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.input, styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-              onPress={() => setShowDistricts(!showDistricts)}
+            <View
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 12,
+              }}
             >
-              <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>
-                {district}
-              </Text>
-              <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-            </TouchableOpacity>
-            {showDistricts && (
-              <View style={[styles.districtList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {MOSCOW_DISTRICTS.slice(0, 12).map((d) => (
-                  <TouchableOpacity
-                    key={d}
-                    style={[styles.districtItem, { borderBottomColor: colors.border }]}
-                    onPress={() => { setDistrict(d); setShowDistricts(false); }}
-                  >
-                    <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>{d}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Лет опыта с птицами"
-              placeholderTextColor={colors.mutedForeground}
-              value={experienceYears}
-              onChangeText={setExperienceYears}
-              keyboardType="number-pad"
-            />
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Готовность помогать
-            </Text>
-            <View style={styles.statusRow}>
-              {(["ready", "sometimes", "not_now"] as const).map((s) => {
-                const labels = { ready: "Готов", sometimes: "Иногда", not_now: "Пока нет" };
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    style={[
-                      styles.statusBtn,
-                      {
-                        backgroundColor: helpStatus === s ? colors.primary : colors.card,
-                        borderColor: helpStatus === s ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => { setHelpStatus(s); Haptics.selectionAsync(); }}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.statusBtnLabel,
-                        { color: helpStatus === s ? "#fff" : colors.foreground },
-                      ]}
-                    >
-                      {labels[s]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              <NativeMap
+                // key меняется один раз — когда геолокация резолвится и
+                // pickerInitialRegion смещается с центра Москвы. Это
+                // ремаунтит WebView с правильным стартовым центром, после
+                // чего useRef внутри NativeMap «замораживает» его и
+                // пользовательские жесты больше не сбрасываются.
+                key={`picker-${pickerInitialRegion.latitude.toFixed(4)},${pickerInitialRegion.longitude.toFixed(4)}`}
+                mode="locationPicker"
+                region={pickerInitialRegion}
+                zoom={15}
+                onLocationSelected={({ latitude, longitude }) =>
+                  updateMarker(latitude, longitude)
+                }
+              />
             </View>
-          </ScrollView>
+            <TouchableOpacity
+              style={{
+                alignSelf: "stretch",
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: locationConfirmed
+                  ? colors.secondary
+                  : colors.primary,
+              }}
+              onPress={() => {
+                setLocationConfirmed(true);
+                Haptics.selectionAsync();
+              }}
+              activeOpacity={0.85}
+              disabled={lat === undefined || lng === undefined}
+            >
+              <Text
+                style={{
+                  color: locationConfirmed ? colors.foreground : "#fff",
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 15,
+                }}
+              >
+                {locationConfirmed
+                  ? "✓ Место сохранено"
+                  : "Использовать это место"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         );
 
       case "map":
