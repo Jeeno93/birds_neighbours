@@ -20,9 +20,6 @@
       "package": "com.pernatyesosedi.app",
       "versionCode": 18
     },
-    "locales": {
-      "ru": "./locales/ru.json"
-    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
