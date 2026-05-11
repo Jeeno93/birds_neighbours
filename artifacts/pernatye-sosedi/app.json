@@ -18,7 +18,10 @@
     },
     "android": {
       "package": "com.pernatyesosedi.app",
-      "versionCode": 17
+      "versionCode": 18
+    },
+    "locales": {
+      "ru": "./locales/ru.json"
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -33,7 +36,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Приложение использует геолокацию чтобы показывать птичников рядом с вами."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

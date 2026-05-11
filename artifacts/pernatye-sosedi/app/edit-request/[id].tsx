@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
@@ -27,6 +28,43 @@ import { useColors } from "@/hooks/useColors";
 
 const SIT_TYPES_ORDER: SitType[] = ["full", "guest", "medical_only"];
 
+// Существующие запросы могут содержать дату либо как `YYYY-MM-DD`
+// (после миграции на бэкенд), либо как `DD.MM.YYYY` (старый локальный
+// формат). Поддерживаем оба варианта; на любую невалидную строку
+// возвращаем сегодня, чтобы пикер не получил Invalid Date.
+function parseStoredDate(value: string | undefined): Date {
+  if (!value) return new Date();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = new Date(`${value}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+  const parts = value.split(".");
+  if (parts.length === 3) {
+    const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+const formatDate = (date: Date): string =>
+  date.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+// Собираем YYYY-MM-DD из локальных компонент даты, а не через
+// toISOString(): последний переводит локальную полночь в UTC и в
+// часовых поясах с положительным смещением (например, Москва UTC+3)
+// отдаёт предыдущий календарный день.
+const toISODate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 export default function EditRequestScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -39,8 +77,10 @@ export default function EditRequestScreen() {
   const [selectedBirds, setSelectedBirds] = useState<SitRequestBird[]>(
     existing?.birds ?? []
   );
-  const [dateFrom, setDateFrom] = useState(existing?.dateFrom ?? "");
-  const [dateTo, setDateTo] = useState(existing?.dateTo ?? "");
+  const [dateFrom, setDateFrom] = useState<Date>(parseStoredDate(existing?.dateFrom));
+  const [dateTo, setDateTo] = useState<Date>(parseStoredDate(existing?.dateTo));
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
   const [district, setDistrict] = useState(existing?.district ?? "Арбат");
   const [comment, setComment] = useState(existing?.comment ?? "");
   const [showDistricts, setShowDistricts] = useState(false);
@@ -76,16 +116,16 @@ export default function EditRequestScreen() {
       Alert.alert("Ошибка", "Выберите хотя бы одну птицу");
       return;
     }
-    if (!dateFrom || !dateTo) {
-      Alert.alert("Ошибка", "Укажите даты отъезда");
+    if (dateTo < dateFrom) {
+      Alert.alert("Ошибка", "Дата окончания не может быть раньше даты начала");
       return;
     }
 
     await updateSitRequest(existing.id, {
       sitType,
       birds: selectedBirds,
-      dateFrom,
-      dateTo,
+      dateFrom: toISODate(dateFrom),
+      dateTo: toISODate(dateTo),
       district,
       comment: comment.trim(),
     });
@@ -267,21 +307,64 @@ export default function EditRequestScreen() {
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Даты отъезда</Text>
         <View style={[styles.datesRow]}>
-          <TextInput
-            style={[styles.dateInput, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground, flex: 1 }]}
-            placeholder="С (дд.мм.гггг)"
-            placeholderTextColor={colors.mutedForeground}
-            value={dateFrom}
-            onChangeText={setDateFrom}
-          />
-          <TextInput
-            style={[styles.dateInput, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground, flex: 1 }]}
-            placeholder="По (дд.мм.гггг)"
-            placeholderTextColor={colors.mutedForeground}
-            value={dateTo}
-            onChangeText={setDateTo}
-          />
+          <TouchableOpacity
+            style={[
+              styles.datePickerBtn,
+              { borderColor: colors.border, backgroundColor: colors.card, flex: 1 },
+            ]}
+            onPress={() => setShowFromPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.datePickerText, { color: colors.foreground }]}>
+              {formatDate(dateFrom)}
+            </Text>
+            <Feather name="calendar" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.datePickerBtn,
+              { borderColor: colors.border, backgroundColor: colors.card, flex: 1 },
+            ]}
+            onPress={() => setShowToPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.datePickerText, { color: colors.foreground }]}>
+              {formatDate(dateTo)}
+            </Text>
+            <Feather name="calendar" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
         </View>
+
+        {showFromPicker && (
+          <DateTimePicker
+            value={dateFrom}
+            mode="date"
+            display="default"
+            locale="ru-RU"
+            minimumDate={new Date()}
+            onChange={(_event, date) => {
+              setShowFromPicker(false);
+              if (date) {
+                setDateFrom(date);
+                if (dateTo < date) setDateTo(date);
+              }
+            }}
+          />
+        )}
+
+        {showToPicker && (
+          <DateTimePicker
+            value={dateTo}
+            mode="date"
+            display="default"
+            locale="ru-RU"
+            minimumDate={dateFrom}
+            onChange={(_event, date) => {
+              setShowToPicker(false);
+              if (date) setDateTo(date);
+            }}
+          />
+        )}
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Район</Text>
         <TouchableOpacity
@@ -394,6 +477,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_400Regular",
   },
+  datePickerBtn: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  datePickerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   selectBtn: {
     borderWidth: 1,
     borderRadius: 12,

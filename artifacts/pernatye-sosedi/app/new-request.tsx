@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -35,8 +36,28 @@ export default function NewRequestScreen() {
   const [selectedBirds, setSelectedBirds] = useState<SitRequestBird[]>(
     birds[0] ? [{ birdId: birds[0].id, needsMedication: false }] : []
   );
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState<Date>(new Date());
+  const [dateTo, setDateTo] = useState<Date>(new Date());
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
+
+  const formatDate = (date: Date): string =>
+    date.toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+  // Собираем YYYY-MM-DD из локальных компонент даты, а не через
+  // toISOString(): последний переводит локальную полночь в UTC и в
+  // часовых поясах с положительным смещением (например, Москва UTC+3)
+  // отдаёт предыдущий календарный день.
+  const toISODate = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
   const [district, setDistrict] = useState(currentUser?.district ?? "Арбат");
   const [comment, setComment] = useState("");
   const [showDistricts, setShowDistricts] = useState(false);
@@ -81,8 +102,8 @@ export default function NewRequestScreen() {
       Alert.alert("Ошибка", "Выберите хотя бы одну птицу");
       return;
     }
-    if (!dateFrom || !dateTo) {
-      Alert.alert("Ошибка", "Укажите даты отъезда");
+    if (dateTo < dateFrom) {
+      Alert.alert("Ошибка", "Дата окончания не может быть раньше даты начала");
       return;
     }
     const contactTelegram = sanitizeTgHandle(telegramUsername);
@@ -107,8 +128,8 @@ export default function NewRequestScreen() {
       userId: currentUser?.id ?? "me",
       birds: selectedBirds,
       sitType,
-      dateFrom,
-      dateTo,
+      dateFrom: toISODate(dateFrom),
+      dateTo: toISODate(dateTo),
       district,
       comment: comment.trim(),
       contactTelegram,
@@ -304,21 +325,64 @@ export default function NewRequestScreen() {
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Даты отъезда</Text>
         <View style={[styles.datesRow]}>
-          <TextInput
-            style={[styles.dateInput, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground, flex: 1 }]}
-            placeholder="С (дд.мм.гггг)"
-            placeholderTextColor={colors.mutedForeground}
-            value={dateFrom}
-            onChangeText={setDateFrom}
-          />
-          <TextInput
-            style={[styles.dateInput, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground, flex: 1 }]}
-            placeholder="По (дд.мм.гггг)"
-            placeholderTextColor={colors.mutedForeground}
-            value={dateTo}
-            onChangeText={setDateTo}
-          />
+          <TouchableOpacity
+            style={[
+              styles.datePickerBtn,
+              { borderColor: colors.border, backgroundColor: colors.card, flex: 1 },
+            ]}
+            onPress={() => setShowFromPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.datePickerText, { color: colors.foreground }]}>
+              {formatDate(dateFrom)}
+            </Text>
+            <Feather name="calendar" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.datePickerBtn,
+              { borderColor: colors.border, backgroundColor: colors.card, flex: 1 },
+            ]}
+            onPress={() => setShowToPicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.datePickerText, { color: colors.foreground }]}>
+              {formatDate(dateTo)}
+            </Text>
+            <Feather name="calendar" size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
         </View>
+
+        {showFromPicker && (
+          <DateTimePicker
+            value={dateFrom}
+            mode="date"
+            display="default"
+            locale="ru-RU"
+            minimumDate={new Date()}
+            onChange={(_event, date) => {
+              setShowFromPicker(false);
+              if (date) {
+                setDateFrom(date);
+                if (dateTo < date) setDateTo(date);
+              }
+            }}
+          />
+        )}
+
+        {showToPicker && (
+          <DateTimePicker
+            value={dateTo}
+            mode="date"
+            display="default"
+            locale="ru-RU"
+            minimumDate={dateFrom}
+            onChange={(_event, date) => {
+              setShowToPicker(false);
+              if (date) setDateTo(date);
+            }}
+          />
+        )}
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Район</Text>
         <TouchableOpacity
@@ -472,6 +536,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_400Regular",
   },
+  datePickerBtn: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  datePickerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   selectBtn: {
     borderWidth: 1,
     borderRadius: 12,
