@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -328,6 +329,38 @@ export default function BirdDetailScreen() {
             ) : null}
           </>
         ) : null}
+
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          Приватность
+        </Text>
+        <View
+          style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.infoIconWrap, { backgroundColor: colors.secondary }]}>
+            <Feather
+              name={bird.isPublic === false ? "eye-off" : "eye"}
+              size={16}
+              color={colors.primary}
+            />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
+              Видимость для других птичников
+            </Text>
+            <Text style={[styles.infoValue, { color: colors.foreground }]}>
+              {bird.isPublic === false ? "Скрыта от других" : "Показывается другим"}
+            </Text>
+          </View>
+          <Switch
+            value={bird.isPublic !== false}
+            onValueChange={async (v) => {
+              await Haptics.selectionAsync();
+              await updateBird(bird.id, { isPublic: v });
+            }}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#fff"
+          />
+        </View>
 
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
           Файлы

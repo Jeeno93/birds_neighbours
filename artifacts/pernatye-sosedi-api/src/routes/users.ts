@@ -14,6 +14,7 @@ function rowToUser(row: any) {
     city: row.city,
     district: row.district,
     address: row.address,
+    addressComment: row.address_comment,
     lat: row.lat,
     lng: row.lng,
     experienceYears: row.experience_years,
@@ -59,6 +60,8 @@ router.post("/auth", async (req: Request, res: Response) => {
 // GET /api/users — list neighbors that are help-active and have coords
 router.get("/", async (req: Request, res: Response) => {
   try {
+    // Город теперь — необязательный параметр. Без него возвращаем всех
+    // активных соседей с координатами; с ним — фильтруем по точному совпадению.
     const city = (req.query.city as string | undefined) ?? null;
     const params: unknown[] = [];
     let where = `help_status <> 'not_now' AND lat IS NOT NULL AND lng IS NOT NULL`;
@@ -104,6 +107,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
       name,
       district,
       address,
+      addressComment,
       lat,
       lng,
       helpStatus,
@@ -125,6 +129,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
     if (name !== undefined) push("name", name);
     if (district !== undefined) push("district", district);
     if (address !== undefined) push("address", address);
+    if (addressComment !== undefined) push("address_comment", addressComment);
     if (lat !== undefined) push("lat", lat);
     if (lng !== undefined) push("lng", lng);
     if (helpStatus !== undefined) push("help_status", helpStatus);

@@ -25,11 +25,14 @@ function rowToBird(row: any) {
     vetContact: row.vet_contact,
     lastCheckupDate: row.last_checkup_date,
     medicationExperience: row.medication_experience,
+    isPublic: row.is_public ?? true,
     createdAt: row.created_at,
   };
 }
 
 // GET /api/birds?userId=
+// Если запрашивающий пользователь (x-user-id) НЕ владелец списка — отдаём
+// только публичные карточки (is_public = true либо NULL для старых записей).
 router.get("/", async (req: Request, res: Response) => {
   try {
     const userId = req.query.userId as string | undefined;
@@ -37,10 +40,12 @@ router.get("/", async (req: Request, res: Response) => {
       res.status(400).json({ error: "userId query param is required" });
       return;
     }
-    const result = await pool.query(
-      "SELECT * FROM birds WHERE user_id = $1 ORDER BY created_at ASC",
-      [userId]
-    );
+    const requesterId = (req.header("x-user-id") || "").trim() || null;
+    const isOwner = requesterId !== null && requesterId === userId;
+    const sql = isOwner
+      ? "SELECT * FROM birds WHERE user_id = $1 ORDER BY created_at ASC"
+      : "SELECT * FROM birds WHERE user_id = $1 AND (is_public IS TRUE OR is_public IS NULL) ORDER BY created_at ASC";
+    const result = await pool.query(sql, [userId]);
     res.json(result.rows.map(rowToBird));
   } catch (err) {
     console.error("GET /api/birds error:", err);
@@ -68,6 +73,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       vetContact,
       lastCheckupDate,
       medicationExperience,
+      isPublic,
     } = req.body ?? {};
 
     if (!species || !name) {
@@ -79,9 +85,9 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       `INSERT INTO birds (
         user_id, species, name, photo_url, age_months, food, schedule, diseases,
         medications, catch_notes, vet_notes, sit_location, was_examined,
-        vet_name, vet_contact, last_checkup_date, medication_experience
+        vet_name, vet_contact, last_checkup_date, medication_experience, is_public
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
       ) RETURNING *`,
       [
         req.userId,
@@ -101,6 +107,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         vetContact ?? null,
         lastCheckupDate ?? null,
         medicationExperience ?? null,
+        isPublic ?? true,
       ]
     );
     res.status(201).json(rowToBird(result.rows[0]));
@@ -140,6 +147,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
       vetContact: "vet_contact",
       lastCheckupDate: "last_checkup_date",
       medicationExperience: "medication_experience",
+      isPublic: "is_public",
     };
 
     const fields: string[] = [];

@@ -85,6 +85,7 @@ export default function EditBirdScreen() {
   const [vetName, setVetName] = useState(bird?.vetName ?? "");
   const [vetContact, setVetContact] = useState(bird?.vetContact ?? "");
   const [wasExamined, setWasExamined] = useState(bird?.wasExamined ?? false);
+  const [isPublic, setIsPublic] = useState<boolean>(bird?.isPublic ?? true);
   const [lastCheckupDate, setLastCheckupDate] = useState(bird?.lastCheckupDate ?? "");
   const [medicationExperience, setMedicationExperience] = useState(bird?.medicationExperience ?? "");
   const [attachments, setAttachments] = useState<BirdAttachment[]>(bird?.attachments ?? []);
@@ -169,6 +170,7 @@ export default function EditBirdScreen() {
       vetName: vetName.trim() || undefined,
       vetContact: vetContact.trim() || undefined,
       wasExamined,
+      isPublic,
       lastCheckupDate: lastCheckupDate.trim() || undefined,
       medicationExperience: medicationExperience.trim() || undefined,
       attachments: attachments.length ? attachments : undefined,
@@ -382,6 +384,58 @@ export default function EditBirdScreen() {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+          Приватность
+        </Text>
+        <View
+          style={[
+            styles.inputGroup,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              gap: 12,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: colors.foreground,
+                  fontFamily: "Inter_500Medium",
+                  fontSize: 14,
+                }}
+              >
+                Показывать птицу другим птичникам
+              </Text>
+              <Text
+                style={{
+                  color: colors.mutedForeground,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 12,
+                  marginTop: 2,
+                }}
+              >
+                Другие пользователи смогут видеть карточку птицы
+              </Text>
+            </View>
+            <Switch
+              value={isPublic}
+              onValueChange={(v) => {
+                setIsPublic(v);
+                Haptics.selectionAsync();
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </View>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>

@@ -80,6 +80,7 @@ export interface Bird {
   wasExamined?: boolean;
   lastCheckupDate?: string;
   medicationExperience?: string;
+  isPublic?: boolean;
   createdAt: string;
 }
 
@@ -88,8 +89,10 @@ export interface User {
   telegramId: string;
   name: string;
   photoUrl?: string;
+  city?: string;
   district: string;
   address?: string;
+  addressComment?: string;
   lat?: number;
   lng?: number;
   experienceYears: number;
@@ -207,7 +210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadNeighbors = async () => {
       try {
-        const data = await apiRequest<User[]>("/api/users?city=Москва");
+        const data = await apiRequest<User[]>("/api/users");
         setNeighbors(
           Array.isArray(data) ? data.filter((u) => u.id !== currentUser?.id) : []
         );
@@ -313,8 +316,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           method: "PUT",
           body: JSON.stringify({
             name: user.name,
+            city: user.city,
             district: user.district,
             address: user.address,
+            addressComment: user.addressComment,
             lat: user.lat,
             lng: user.lng,
             helpStatus: user.helpStatus,

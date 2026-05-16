@@ -1,0 +1,89 @@
+Внеси следующие изменения в приложение и бэкенд.
+1. Временные endpoints для миграций
+В artifacts/pernatye-sosedi-api/src/index.ts добавь:
+tsapp.post('/migrate003', async (req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address_comment TEXT;
+    `);
+    res.json({ success: true, message: 'Migration 003 applied' });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/migrate004', async (req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE birds ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+    `);
+    res.json({ success: true, message: 'Migration 004 applied' });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+2. Адрес и комментарий к адресу
+В тип User добавь:
+tsaddress?: string;
+addressComment?: string;
+В app/edit-profile.tsx после блока карты добавь необязательное поле:
+tsx<TextInput
+  placeholder="Комментарий к адресу: подъезд, домофон, особенности ЖК..."
+  value={addressComment}
+  onChangeText={setAddressComment}
+  multiline
+  numberOfLines={2}
+  style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    padding: 14, color: colors.foreground, marginTop: 8 }}
+/>
+В бэкенде artifacts/pernatye-sosedi-api/src/routes/users.ts добавь address и address_comment в SELECT и UPDATE запросы.
+3. Другие города
+В app/onboarding/index.tsx и app/edit-profile.tsx город определяется автоматически из reverse geocoding Яндекса — берётся населённый пункт из ответа. Показывай его как редактируемое текстовое поле под картой:
+tsx<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Город:</Text>
+  <TextInput
+    value={city}
+    onChangeText={setCity}
+    style={{ flex: 1, color: colors.foreground, fontSize: 14,
+      borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 4 }}
+  />
+</View>
+В AppContext.tsx убери фильтр ?city=Москва — загружай всех пользователей:
+tsconst data = await apiRequest<User[]>('/api/users');
+В бэкенде в GET /api/users убери обязательность фильтра по городу — если city не передан возвращай всех пользователей с help_status != 'not_now' и заполненными координатами.
+4. Просмотр птиц других птичников
+В app/neighbor/[id].tsx убедись что птицы соседа загружаются через GET /api/birds?userId=:id. Каждая птица отображается карточкой с видом, именем, возрастом и болезнями. Тап на птицу открывает модальное окно с базовой информацией — без конфиденциальных данных (без контакта ветеринара, без вложений).
+5. Опция приватности птицы
+В тип Bird добавь:
+tsisPublic?: boolean;
+В app/bird/[id].tsx и app/edit-bird/[id].tsx добавь переключатель в секцию настроек:
+tsx<View style={{ flexDirection: 'row', justifyContent: 'space-between',
+  alignItems: 'center', paddingVertical: 12 }}>
+  <View style={{ flex: 1 }}>
+    <Text style={{ color: colors.foreground, fontWeight: '500' }}>
+      Показывать птицу другим птичникам
+    </Text>
+    <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 2 }}>
+      Другие пользователи смогут видеть карточку птицы
+    </Text>
+  </View>
+  <Switch
+    value={isPublic ?? true}
+    onValueChange={setIsPublic}
+    trackColor={{ true: colors.primary }}
+  />
+</View>
+В бэкенде в GET /api/birds?userId=:id — если в заголовке x-user-id другой пользователь, возвращай только птиц с is_public = true (или is_public IS NULL).
+6. Поиск по адресу вместо района
+В app/neighbors.tsx замени фильтр по району на поиск по имени и адресу:
+tsxconst filtered = neighbors.filter(n =>
+  n.name.toLowerCase().includes(search.toLowerCase()) ||
+  (n.address ?? '').toLowerCase().includes(search.toLowerCase()) ||
+  n.city.toLowerCase().includes(search.toLowerCase())
+);
+Убери выпадающий фильтр по типу передержки если он использует районы.
+7. Дублирование типа передержки
+В app/new-request.tsx проверь что тип передержки (SitType) выбирается только один раз. Если есть два места — убери дублирующее.
+Финальные шаги:
+Увеличь versionCode до 21. Проверь typecheck. Обнови DOCUMENTATION.md. Закоммить фронтенд и бэкенд через Git вкладку с сообщением feat: address, city, bird privacy, neighbor birds.

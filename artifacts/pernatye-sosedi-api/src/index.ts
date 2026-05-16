@@ -24,6 +24,30 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Временные миграционные эндпоинты — после применения на проде стоит убрать.
+app.post("/migrate003", async (_req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS address_comment TEXT;
+    `);
+    res.json({ success: true, message: "Migration 003 applied" });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message ?? String(e) });
+  }
+});
+
+app.post("/migrate004", async (_req, res) => {
+  try {
+    await pool.query(`
+      ALTER TABLE birds ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+    `);
+    res.json({ success: true, message: "Migration 004 applied" });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message ?? String(e) });
+  }
+});
+
 async function start(): Promise<void> {
   const client = await pool.connect();
   client.release();

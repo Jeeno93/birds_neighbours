@@ -57,8 +57,8 @@ export default function NeighborsScreen() {
       const matchesQuery =
         !q ||
         n.name.toLowerCase().includes(q) ||
-        n.district.toLowerCase().includes(q) ||
-        (n.address ?? "").toLowerCase().includes(q);
+        (n.address ?? "").toLowerCase().includes(q) ||
+        (n.city ?? "").toLowerCase().includes(q);
       const matchesSitType =
         !sitTypeFilter || (n.sitTypes ?? []).includes(sitTypeFilter);
       return matchesQuery && matchesSitType;

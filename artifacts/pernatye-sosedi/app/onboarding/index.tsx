@@ -36,18 +36,28 @@ import { apiRequest } from "@/api/client";
 
 const MOSCOW_CENTER = { latitude: 55.7558, longitude: 37.6173 };
 
-async function reverseGeocode(lat: number, lng: number): Promise<string> {
+async function reverseGeocode(
+  lat: number,
+  lng: number
+): Promise<{ text: string; city: string }> {
   try {
     const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
     const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`;
     const res = await fetch(url);
     const data = await res.json();
-    return (
-      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject
-        ?.metaDataProperty?.GeocoderMetaData?.text ?? ""
-    );
+    const geoObject =
+      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+    const text =
+      geoObject?.metaDataProperty?.GeocoderMetaData?.text ?? "";
+    const components: Array<{ kind: string; name: string }> =
+      geoObject?.metaDataProperty?.GeocoderMetaData?.Address?.Components ?? [];
+    const city =
+      components.find((c) => c.kind === "locality")?.name ??
+      components.find((c) => c.kind === "province")?.name ??
+      "";
+    return { text, city };
   } catch {
-    return "";
+    return { text: "", city: "" };
   }
 }
 
@@ -103,6 +113,7 @@ export default function OnboardingScreen() {
   const [lat, setLat] = useState<number | undefined>(undefined);
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
   const [addressLoading, setAddressLoading] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [locationTriggered, setLocationTriggered] = useState(false);
@@ -114,9 +125,10 @@ export default function OnboardingScreen() {
     setLocationConfirmed(false);
     setAddressLoading(true);
     const reqId = ++geocodeReqRef.current;
-    const text = await reverseGeocode(latValue, lngValue);
+    const { text, city: detectedCity } = await reverseGeocode(latValue, lngValue);
     if (reqId !== geocodeReqRef.current) return; // устаревший ответ
     setAddress(text);
+    if (detectedCity) setCity(detectedCity);
     setAddressLoading(false);
   };
 
@@ -196,6 +208,7 @@ export default function OnboardingScreen() {
       id: userId,
       telegramId: baseUser.telegramId ?? telegramId,
       name: userName,
+      city: city || baseUser.city || "Москва",
       district: derivedDistrict,
       address: address || baseUser.address,
       lat: lat ?? baseUser.lat,
@@ -688,6 +701,33 @@ export default function OnboardingScreen() {
                   : "Использовать это место"}
               </Text>
             </TouchableOpacity>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Город:
+              </Text>
+              <TextInput
+                value={city}
+                onChangeText={setCity}
+                placeholder="Москва"
+                placeholderTextColor={colors.mutedForeground}
+                style={{
+                  flex: 1,
+                  color: colors.foreground,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 14,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  paddingVertical: 4,
+                }}
+              />
+            </View>
           </View>
         );
 

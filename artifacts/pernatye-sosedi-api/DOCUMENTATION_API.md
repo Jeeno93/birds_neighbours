@@ -52,22 +52,29 @@ artifacts/pernatye-sosedi-api/
 
 - `GET /health` → `{ "status": "ok" }`
 
+### Миграционные endpoints (одноразовые)
+
+- `POST /migrate003` — добавляет `users.address` и `users.address_comment` (idempotent).
+- `POST /migrate004` — добавляет `birds.is_public BOOLEAN DEFAULT TRUE` (idempotent).
+
+Эти ручки безопасны для повторного вызова (`ADD COLUMN IF NOT EXISTS`) и нужны только для применения миграций на проде без `psql`-доступа. После применения их можно убрать.
+
 ### Users — `/api/users`
 
 | Метод | Путь | Auth | Описание |
 |---|---|---|---|
 | POST | `/api/users/auth` | — | Тело: `{ telegramId, name }`. Find-or-create по `telegram_id`. Возвращает пользователя (201 если создан, 200 если уже был). |
-| GET | `/api/users?city=Москва` | — | Список соседей: `help_status <> 'not_now'` И заполнены `lat`/`lng`. Опциональный фильтр по `city`. |
+| GET | `/api/users?city=<имя>` | — | Список соседей: `help_status <> 'not_now'` И заполнены `lat`/`lng`. `city` — опционально; без него возвращаются соседи из всех городов. |
 | GET | `/api/users/:id` | — | Одного пользователя. 404 если нет. |
-| PUT | `/api/users/:id` | `x-user-id` == `:id` | Обновить профиль: `name, district, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets, city, photoUrl`. Обновляются только переданные поля. 403 если `x-user-id` не совпадает с `:id`. |
+| PUT | `/api/users/:id` | `x-user-id` == `:id` | Обновить профиль: `name, city, district, address, addressComment, lat, lng, helpStatus, experienceYears, sitTypes, capabilities, otherPets, photoUrl`. Обновляются только переданные поля. 403 если `x-user-id` не совпадает с `:id`. |
 
 ### Birds — `/api/birds`
 
 | Метод | Путь | Auth | Описание |
 |---|---|---|---|
-| GET | `/api/birds?userId=<uuid>` | — | Птицы пользователя, отсортированы по `created_at`. |
-| POST | `/api/birds` | `x-user-id` | Создать птицу. Обязательно: `species`, `name`. Прочее — опционально. `userId` берётся из заголовка. |
-| PUT | `/api/birds/:id` | `x-user-id` == `birds.user_id` | Частичное обновление по camelCase ключам (`species, name, photoUrl, ageMonths, food, schedule, diseases, medications, catchNotes, vetNotes, sitLocation, wasExamined, vetName, vetContact, lastCheckupDate, medicationExperience`). 403 если птица не своя. |
+| GET | `/api/birds?userId=<uuid>` | опционально `x-user-id` | Птицы пользователя, отсортированы по `created_at`. Если `x-user-id` совпадает с `userId` — возвращаются все птицы; иначе — только публичные (`is_public IS TRUE` либо `NULL` для старых записей). |
+| POST | `/api/birds` | `x-user-id` | Создать птицу. Обязательно: `species`, `name`. Прочее — опционально, включая `isPublic` (по умолчанию `true`). `userId` берётся из заголовка. |
+| PUT | `/api/birds/:id` | `x-user-id` == `birds.user_id` | Частичное обновление по camelCase ключам (`species, name, photoUrl, ageMonths, food, schedule, diseases, medications, catchNotes, vetNotes, sitLocation, wasExamined, vetName, vetContact, lastCheckupDate, medicationExperience, isPublic`). 403 если птица не своя. |
 | DELETE | `/api/birds/:id` | `x-user-id` == `birds.user_id` | Удалить. 204. |
 
 ### Sit Requests — `/api/sit-requests`
@@ -90,8 +97,8 @@ artifacts/pernatye-sosedi-api/
 
 См. `migrations/001_init.sql`. Кратко:
 
-- **users** — `id, telegram_id (UNIQUE), name, photo_url, city, district, lat, lng, experience_years, help_status, sit_types[], capabilities[], other_pets (jsonb), rating, reviews_count, created_at`.
-- **birds** — `id, user_id (FK→users on delete cascade), species, name, photo_url, age_months, food, schedule, diseases[], medications, catch_notes, vet_notes, sit_location, was_examined, vet_name, vet_contact, last_checkup_date, medication_experience, created_at`.
+- **users** — `id, telegram_id (UNIQUE), name, photo_url, city, district, address, address_comment, lat, lng, experience_years, help_status, sit_types[], capabilities[], other_pets (jsonb), rating, reviews_count, created_at`.
+- **birds** — `id, user_id (FK→users on delete cascade), species, name, photo_url, age_months, food, schedule, diseases[], medications, catch_notes, vet_notes, sit_location, was_examined, vet_name, vet_contact, last_checkup_date, medication_experience, is_public (default true), created_at`.
 - **sit_requests** — `id, user_id (FK→users on delete cascade), birds (jsonb), sit_type, date_from, date_to, district, comment, status, created_at`.
 - **reviews** — `id, from_user_id (FK→users), to_user_id (FK→users), tags[], comment, rating, created_at`.
 

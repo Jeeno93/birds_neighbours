@@ -4,7 +4,9 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -44,6 +46,7 @@ export default function NeighborProfileScreen() {
   const [neighborError, setNeighborError] = useState(false);
 
   const [userBirds, setUserBirds] = useState<Bird[]>([]);
+  const [selectedBird, setSelectedBird] = useState<Bird | null>(null);
   const [userReviews, setUserReviews] = useState<Review[]>([]);
 
   // На каждое изменение id/кэша полностью пересинхронизируем локальный
@@ -272,8 +275,10 @@ export default function NeighborProfileScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Птицы</Text>
             {userBirds.map((bird) => (
-              <View
+              <TouchableOpacity
                 key={bird.id}
+                activeOpacity={0.7}
+                onPress={() => setSelectedBird(bird)}
                 style={[styles.birdRow, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <BirdSpeciesIcon species={bird.species as BirdSpecies} size={32} />
@@ -297,7 +302,8 @@ export default function NeighborProfileScreen() {
                     </Text>
                   ) : null}
                 </View>
-              </View>
+                <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -346,6 +352,87 @@ export default function NeighborProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={selectedBird !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedBird(null)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelectedBird(null)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedBird ? (
+              <>
+                <View style={styles.modalHeader}>
+                  <BirdSpeciesIcon species={selectedBird.species as BirdSpecies} size={56} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalName, { color: colors.foreground }]}>
+                      {selectedBird.name}
+                    </Text>
+                    <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+                      {SPECIES_LABELS[selectedBird.species as keyof typeof SPECIES_LABELS] ??
+                        selectedBird.species}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedBird(null)}>
+                    <Feather name="x" size={22} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                </View>
+
+                {typeof selectedBird.ageMonths === "number" ? (
+                  <View style={styles.modalRow}>
+                    <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+                      Возраст
+                    </Text>
+                    <Text style={[styles.modalValue, { color: colors.foreground }]}>
+                      {selectedBird.ageMonths < 12
+                        ? `${selectedBird.ageMonths} мес.`
+                        : `${Math.floor(selectedBird.ageMonths / 12)} г. ${
+                            selectedBird.ageMonths % 12
+                          } мес.`}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {(selectedBird.diseases ?? []).length > 0 ? (
+                  <View style={styles.modalRow}>
+                    <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+                      Заболевания
+                    </Text>
+                    <Text style={[styles.modalValue, { color: colors.foreground }]}>
+                      {(selectedBird.diseases ?? []).join(", ")}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {typeof selectedBird.wasExamined === "boolean" ? (
+                  <View style={styles.modalRow}>
+                    <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+                      Обследование
+                    </Text>
+                    <Text style={[styles.modalValue, { color: colors.foreground }]}>
+                      {selectedBird.wasExamined ? "Проходила" : "Не проходила"}
+                      {selectedBird.wasExamined && selectedBird.lastCheckupDate
+                        ? ` · ${selectedBird.lastCheckupDate}`
+                        : ""}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <Text style={[styles.modalHint, { color: colors.mutedForeground }]}>
+                  Подробности об уходе, питании и ветеринаре владелец передаст лично при общении.
+                </Text>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -398,6 +485,29 @@ const styles = StyleSheet.create({
   birdSpecies: { fontSize: 12, fontFamily: "Inter_400Regular" },
   birdMetaRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
   birdMeta: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 18,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  modalName: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  modalRow: { gap: 2 },
+  modalLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  modalValue: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  modalHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4, fontStyle: "italic" },
   petsBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 4 },
   petBadge: {
     paddingHorizontal: 10,
