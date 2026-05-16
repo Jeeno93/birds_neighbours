@@ -52,13 +52,6 @@ artifacts/pernatye-sosedi-api/
 
 - `GET /health` → `{ "status": "ok" }`
 
-### Миграционные endpoints (одноразовые)
-
-- `POST /migrate003` — добавляет `users.address` и `users.address_comment` (idempotent).
-- `POST /migrate004` — добавляет `birds.is_public BOOLEAN DEFAULT TRUE` (idempotent).
-
-Эти ручки безопасны для повторного вызова (`ADD COLUMN IF NOT EXISTS`) и нужны только для применения миграций на проде без `psql`-доступа. После применения их можно убрать.
-
 ### Users — `/api/users`
 
 | Метод | Путь | Auth | Описание |
