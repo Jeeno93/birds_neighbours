@@ -6,7 +6,6 @@ import React, { useState } from "react";
 import {
   Alert,
   Platform,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -26,6 +25,7 @@ import {
   useApp,
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useColors } from "@/hooks/useColors";
 
 const SPECIES_LIST: BirdSpecies[] = [
@@ -63,7 +63,8 @@ export default function AddBirdScreen() {
 
   const [species, setSpecies] = useState<BirdSpecies>("parrot_budgie");
   const [name, setName] = useState("");
-  const [ageMonths, setAgeMonths] = useState("");
+  const [ageYears, setAgeYears] = useState("");
+  const [ageMonthsExtra, setAgeMonthsExtra] = useState("");
   const [food, setFood] = useState("");
   const [schedule, setSchedule] = useState("");
   const [diseases, setDiseases] = useState("");
@@ -111,12 +112,15 @@ export default function AddBirdScreen() {
       Alert.alert("Ошибка", "Введите имя птицы");
       return;
     }
+    const years = parseInt(ageYears) || 0;
+    const monthsExtra = parseInt(ageMonthsExtra) || 0;
+    const totalMonths = years * 12 + monthsExtra;
     const bird: Bird = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       userId: currentUser?.id ?? "me",
       species,
       name: name.trim(),
-      ageMonths: ageMonths ? parseInt(ageMonths) : undefined,
+      ageMonths: totalMonths > 0 ? totalMonths : undefined,
       food: food.trim() || "Зерновой корм",
       schedule: schedule.trim() || "Кормить утром и вечером",
       diseases: diseases ? diseases.split(",").map((d) => d.trim()).filter(Boolean) : [],
@@ -154,13 +158,14 @@ export default function AddBirdScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         contentContainerStyle={[
           styles.content,
           { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 24) },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        extraKeyboardSpace={100}
       >
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Вид птицы</Text>
         <View style={styles.speciesGrid}>
@@ -203,14 +208,36 @@ export default function AddBirdScreen() {
             value={name}
             onChangeText={setName}
           />
-          <TextInput
-            style={[styles.fieldInput, { color: colors.foreground }]}
-            placeholder="Возраст (в месяцах)"
-            placeholderTextColor={colors.mutedForeground}
-            value={ageMonths}
-            onChangeText={setAgeMonths}
-            keyboardType="number-pad"
-          />
+          <View style={styles.ageRow}>
+            <TextInput
+              style={[
+                styles.fieldInput,
+                styles.ageInput,
+                { color: colors.foreground, borderRightColor: colors.border },
+              ]}
+              placeholder="Возраст: лет"
+              placeholderTextColor={colors.mutedForeground}
+              value={ageYears}
+              onChangeText={(t) => setAgeYears(t.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+            <TextInput
+              style={[styles.fieldInput, styles.ageInput, { color: colors.foreground }]}
+              placeholder="и месяцев"
+              placeholderTextColor={colors.mutedForeground}
+              value={ageMonthsExtra}
+              onChangeText={(t) => {
+                const cleaned = t.replace(/[^0-9]/g, "");
+                const num = parseInt(cleaned, 10);
+                if (cleaned === "" || (Number.isFinite(num) && num <= 11)) {
+                  setAgeMonthsExtra(cleaned);
+                }
+              }}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Карточка ухода</Text>
@@ -397,7 +424,7 @@ export default function AddBirdScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }
@@ -458,6 +485,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     borderBottomWidth: 1,
     minHeight: 48,
+  },
+  ageRow: {
+    flexDirection: "row",
+  },
+  ageInput: {
+    flex: 1,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
   },
   locationCol: {
     gap: 8,

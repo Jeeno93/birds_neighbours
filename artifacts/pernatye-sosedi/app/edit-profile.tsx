@@ -112,6 +112,7 @@ export default function EditProfileScreen() {
       ...currentUser,
       name: trimmedName,
       district: derivedDistrict,
+      address: address || currentUser.address,
       lat,
       lng,
       experienceYears,

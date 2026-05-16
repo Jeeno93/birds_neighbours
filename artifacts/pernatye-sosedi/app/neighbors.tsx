@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
   FlatList,
@@ -32,10 +32,12 @@ export default function NeighborsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { neighbors, sitRequests } = useApp();
+  const { fromRequest } = useLocalSearchParams<{ fromRequest?: string }>();
 
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"rating" | "experience">("rating");
   const [sitTypeFilter, setSitTypeFilter] = useState<SitType | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
 
@@ -55,7 +57,8 @@ export default function NeighborsScreen() {
       const matchesQuery =
         !q ||
         n.name.toLowerCase().includes(q) ||
-        n.district.toLowerCase().includes(q);
+        n.district.toLowerCase().includes(q) ||
+        (n.address ?? "").toLowerCase().includes(q);
       const matchesSitType =
         !sitTypeFilter || (n.sitTypes ?? []).includes(sitTypeFilter);
       return matchesQuery && matchesSitType;
@@ -83,12 +86,27 @@ export default function NeighborsScreen() {
         <View style={{ width: 38 }} />
       </View>
 
+      {fromRequest === "true" && !bannerDismissed && (
+        <View style={[styles.banner, { backgroundColor: "#FEF3C7", borderBottomColor: "#FCD34D" }]}>
+          <Feather name="check-circle" size={18} color="#92400E" />
+          <Text style={styles.bannerText}>
+            Запрос создан! Свяжитесь с подходящими птичниками через Telegram.
+          </Text>
+          <TouchableOpacity
+            onPress={() => setBannerDismissed(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="x" size={16} color="#92400E" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={[styles.searchRow, { borderBottomColor: colors.border }]}>
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Поиск по имени или району..."
+            placeholder="Поиск по имени или адресу..."
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={setQuery}
@@ -285,4 +303,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  bannerText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Inter_500Medium",
+    color: "#92400E",
+  },
 });

@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  MOSCOW_DISTRICTS,
   SitRequestBird,
   SitType,
   SIT_TYPE_LABELS,
@@ -81,9 +80,10 @@ export default function EditRequestScreen() {
   const [dateTo, setDateTo] = useState<Date>(parseStoredDate(existing?.dateTo));
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
-  const [district, setDistrict] = useState(existing?.district ?? "Арбат");
+  // Район сохраняется как был — отдельный селектор района убран,
+  // район выводится автоматически из адреса в профиле.
+  const district = existing?.district ?? "Москва";
   const [comment, setComment] = useState(existing?.comment ?? "");
-  const [showDistricts, setShowDistricts] = useState(false);
 
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
 
@@ -366,29 +366,6 @@ export default function EditRequestScreen() {
           />
         )}
 
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Район</Text>
-        <TouchableOpacity
-          style={[styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-          onPress={() => setShowDistricts(!showDistricts)}
-          activeOpacity={0.8}
-        >
-          <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>{district}</Text>
-          <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-        </TouchableOpacity>
-        {showDistricts && (
-          <View style={[styles.districtList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {MOSCOW_DISTRICTS.slice(0, 15).map((d) => (
-              <TouchableOpacity
-                key={d}
-                style={[styles.districtItem, { borderBottomColor: colors.border }]}
-                onPress={() => { setDistrict(d); setShowDistricts(false); }}
-              >
-                <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>{d}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Комментарий</Text>
         <TextInput
           style={[styles.commentInput, { borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }]}
@@ -486,23 +463,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   datePickerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  selectBtn: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 13,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  districtList: {
-    borderWidth: 1,
-    borderRadius: 12,
-    maxHeight: 200,
-  },
-  districtItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-  },
   commentInput: {
     borderWidth: 1,
     borderRadius: 12,

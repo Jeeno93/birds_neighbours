@@ -13,6 +13,7 @@ function rowToUser(row: any) {
     photoUrl: row.photo_url,
     city: row.city,
     district: row.district,
+    address: row.address,
     lat: row.lat,
     lng: row.lng,
     experienceYears: row.experience_years,
@@ -102,6 +103,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
     const {
       name,
       district,
+      address,
       lat,
       lng,
       helpStatus,
@@ -122,6 +124,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
 
     if (name !== undefined) push("name", name);
     if (district !== undefined) push("district", district);
+    if (address !== undefined) push("address", address);
     if (lat !== undefined) push("lat", lat);
     if (lng !== undefined) push("lng", lng);
     if (helpStatus !== undefined) push("help_status", helpStatus);

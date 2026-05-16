@@ -1,0 +1,74 @@
+Внеси следующие исправления в приложение «Пернатые соседи».
+1. Кнопка «Обрезать» фото
+В app/bird/[id].tsx и app/edit-bird/[id].tsx в интерфейсе обрезки фото кнопка «Обрезать» плохо видна на тёмном фоне. Сделай её явно видимой:
+tsx<TouchableOpacity style={{
+  backgroundColor: colors.primary,
+  paddingHorizontal: 24,
+  paddingVertical: 12,
+  borderRadius: 12,
+}}>
+  <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }}>
+    Обрезать
+  </Text>
+</TouchableOpacity>
+2. Убрать районы везде
+Районы убираем полностью — оставляем только город и адрес.
+В типе User поле district оставь в типе (БД требует) но не показывай пользователю. Заполняй автоматически из первого слова адреса.
+Удали выпадающий список районов из:
+
+app/onboarding/index.tsx
+app/edit-profile.tsx
+app/new-request.tsx
+app/neighbors.tsx (фильтр по району)
+app/(tabs)/map.tsx
+
+В профиле пользователя вместо района показывай адрес (address) если он есть, иначе город.
+В тип User добавь поле:
+tsaddress?: string; // Полный адрес из reverse geocoding
+В AppContext.tsx при сохранении профиля — сохраняй полный адрес из reverse geocoding в поле address.
+В бэкенде artifacts/pernatye-sosedi-api/src/routes/users.ts добавь колонку address в SELECT и UPDATE запросы. Создай миграцию 003_add_address.sql:
+sqlALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+3. После создания запроса — список ситтеров
+В app/new-request.tsx после успешного создания запроса вместо перехода на карту — переходи на экран app/neighbors.tsx с параметром fromRequest=true. На экране соседей если есть этот параметр — показывай баннер сверху:
+tsx<View style={{ backgroundColor: colors.secondary, padding: 16, margin: 16, borderRadius: 12 }}>
+  <Text style={{ fontWeight: '600', color: colors.foreground }}>
+    Запрос создан! Напишите подходящим птичникам 👇
+  </Text>
+</View>
+4. Клавиатура перекрывает поля
+В app/add-bird.tsx и app/edit-bird/[id].tsx замени ScrollView на KeyboardAwareScrollView из уже установленного react-native-keyboard-controller. Убедись что KeyboardAwareScrollView оборачивает всю форму и имеет extraScrollHeight={100}.
+5. Возраст птицы — два поля
+В app/add-bird.tsx и app/edit-bird/[id].tsx замени одно поле ageMonths на два:
+tsxconst [ageYears, setAgeYears] = useState(0);
+const [ageMonthsExtra, setAgeMonthsExtra] = useState(0);
+
+// При сохранении конвертируй:
+const totalMonths = ageYears * 12 + ageMonthsExtra;
+UI — два поля рядом:
+tsx<View style={{ flexDirection: 'row', gap: 12 }}>
+  <View style={{ flex: 1 }}>
+    <Text>Лет</Text>
+    <TextInput keyboardType="numeric" value={String(ageYears)}
+      onChangeText={v => setAgeYears(Number(v) || 0)} />
+  </View>
+  <View style={{ flex: 1 }}>
+    <Text>Месяцев</Text>
+    <TextInput keyboardType="numeric" value={String(ageMonthsExtra)}
+      onChangeText={v => setAgeMonthsExtra(Number(v) || 0)} />
+  </View>
+</View>
+При загрузке существующей птицы — конвертируй обратно:
+tssetAgeYears(Math.floor((bird.ageMonths || 0) / 12));
+setAgeMonthsExtra((bird.ageMonths || 0) % 12);
+6. Плашка «Может не подойти» с объяснением
+В components/NeighborCard.tsx если mayNotMatch === true — показывай тултип или подпись с причиной:
+tsx{mayNotMatch && (
+  <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8,
+    padding: 8, marginTop: 8 }}>
+    <Text style={{ fontSize: 12, color: '#92400E' }}>
+      ⚠️ Может не подойти: не указал готовность к этому типу ухода
+    </Text>
+  </View>
+)}
+7. Дублирование типа передержки
+В app/new-request.tsx проверь что тип передержки (SitType) запрашивается только один раз. Если есть два места где пользователь выбирает «к ситтеру / к себе» — убери одно, оставь только выбор SitType в начале формы.

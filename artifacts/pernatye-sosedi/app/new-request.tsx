@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  MOSCOW_DISTRICTS,
   SitRequest,
   SitRequestBird,
   SitType,
@@ -58,9 +57,10 @@ export default function NewRequestScreen() {
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   };
-  const [district, setDistrict] = useState(currentUser?.district ?? "Арбат");
   const [comment, setComment] = useState("");
-  const [showDistricts, setShowDistricts] = useState(false);
+  // Район берём из профиля автора — он уже выведен из адреса в онбординге
+  // или редактировании профиля. Отдельный селектор района убран.
+  const district = currentUser?.district ?? "Москва";
 
   // У юзеров без настоящего telegram_id (моковый id вида `tg_…`) надо
   // отдельно собрать username — иначе ситтеру некуда написать.
@@ -140,11 +140,10 @@ export default function NewRequestScreen() {
     await addSitRequest(request);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    Alert.alert(
-      "Запрос создан!",
-      `Найдено ${matchedNeighbors.length} подходящих птичников. Напишите им в Telegram!`,
-      [{ text: "Отлично", onPress: () => router.back() }]
-    );
+    // После создания запроса сразу ведём к списку птичников с баннером —
+    // карта тут не нужна, пользователю важно увидеть, кому писать.
+    void matchedNeighbors;
+    router.replace({ pathname: "/neighbors", params: { fromRequest: "true" } });
   };
 
   if (birds.length === 0) {
@@ -384,29 +383,6 @@ export default function NewRequestScreen() {
           />
         )}
 
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Район</Text>
-        <TouchableOpacity
-          style={[styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-          onPress={() => setShowDistricts(!showDistricts)}
-          activeOpacity={0.8}
-        >
-          <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>{district}</Text>
-          <Feather name="chevron-down" size={16} color={colors.mutedForeground} />
-        </TouchableOpacity>
-        {showDistricts && (
-          <View style={[styles.districtList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {MOSCOW_DISTRICTS.slice(0, 15).map((d) => (
-              <TouchableOpacity
-                key={d}
-                style={[styles.districtItem, { borderBottomColor: colors.border }]}
-                onPress={() => { setDistrict(d); setShowDistricts(false); }}
-              >
-                <Text style={{ color: colors.foreground, fontFamily: "Inter_400Regular" }}>{d}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
         {needsTelegramInput && (
           <>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
@@ -545,23 +521,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   datePickerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  selectBtn: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 13,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  districtList: {
-    borderWidth: 1,
-    borderRadius: 12,
-    maxHeight: 200,
-  },
-  districtItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-  },
   commentInput: {
     borderWidth: 1,
     borderRadius: 12,

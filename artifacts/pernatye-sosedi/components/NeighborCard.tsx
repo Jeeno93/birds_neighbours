@@ -50,14 +50,19 @@ export function NeighborCard({ user, onPress, mayNotMatch }: NeighborCardProps) 
         <Text style={[styles.name, { color: colors.foreground }]}>{user.name}</Text>
         {mayNotMatch && (
           <View style={styles.mayNotMatchBadge}>
-            <Feather name="alert-circle" size={11} color="#6b7280" />
-            <Text style={styles.mayNotMatchText}> Может не подойти</Text>
+            <Feather name="alert-triangle" size={11} color="#92400E" />
+            <Text style={styles.mayNotMatchText}>
+              {" "}Может не подойти: не указал готовность к этому типу ухода
+            </Text>
           </View>
         )}
         <View style={styles.row}>
           <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-          <Text style={[styles.district, { color: colors.mutedForeground }]}>
-            {" "}{user.district}
+          <Text
+            style={[styles.district, { color: colors.mutedForeground }]}
+            numberOfLines={2}
+          >
+            {" "}{user.address || user.district}
           </Text>
         </View>
         <View style={styles.row}>
@@ -126,13 +131,20 @@ const styles = StyleSheet.create({
   },
   mayNotMatchBadge: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     alignSelf: "flex-start",
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#FEF3C7",
     borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     marginTop: 2,
+    maxWidth: "100%",
   },
-  mayNotMatchText: { fontSize: 11, fontFamily: "Inter_500Medium", color: "#6b7280" },
+  mayNotMatchText: {
+    flexShrink: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: "Inter_500Medium",
+    color: "#92400E",
+  },
 });

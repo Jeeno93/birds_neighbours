@@ -197,6 +197,7 @@ export default function OnboardingScreen() {
       telegramId: baseUser.telegramId ?? telegramId,
       name: userName,
       district: derivedDistrict,
+      address: address || baseUser.address,
       lat: lat ?? baseUser.lat,
       lng: lng ?? baseUser.lng,
       experienceYears: parseInt(experienceYears) || 2,

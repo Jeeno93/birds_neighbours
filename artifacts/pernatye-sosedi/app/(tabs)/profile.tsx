@@ -134,8 +134,11 @@ export default function ProfileScreen() {
               </Text>
               <View style={styles.row}>
                 <Feather name="map-pin" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.district, { color: colors.mutedForeground }]}>
-                  {" "}{currentUser.district}
+                <Text
+                  style={[styles.district, { color: colors.mutedForeground }]}
+                  numberOfLines={2}
+                >
+                  {" "}{currentUser.address || currentUser.district}
                 </Text>
               </View>
               <Text style={[styles.experience, { color: colors.mutedForeground }]}>

@@ -189,7 +189,12 @@ export default function NeighborProfileScreen() {
           <Text style={[styles.name, { color: colors.foreground }]}>{neighbor.name}</Text>
           <View style={styles.row}>
             <Feather name="map-pin" size={14} color={colors.mutedForeground} />
-            <Text style={[styles.sub, { color: colors.mutedForeground }]}>{" "}{neighbor.district}</Text>
+            <Text
+              style={[styles.sub, { color: colors.mutedForeground }]}
+              numberOfLines={2}
+            >
+              {" "}{neighbor.address || neighbor.district}
+            </Text>
           </View>
           <View style={styles.row}>
             <Feather name="award" size={14} color={colors.mutedForeground} />

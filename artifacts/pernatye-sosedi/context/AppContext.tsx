@@ -89,6 +89,7 @@ export interface User {
   name: string;
   photoUrl?: string;
   district: string;
+  address?: string;
   lat?: number;
   lng?: number;
   experienceYears: number;
@@ -313,6 +314,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({
             name: user.name,
             district: user.district,
+            address: user.address,
             lat: user.lat,
             lng: user.lng,
             helpStatus: user.helpStatus,

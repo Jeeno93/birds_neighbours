@@ -8,7 +8,6 @@ import {
   Alert,
   Image,
   Platform,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -28,6 +27,7 @@ import {
   useApp,
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useColors } from "@/hooks/useColors";
 
 const SPECIES_LIST: BirdSpecies[] = [
@@ -68,7 +68,13 @@ export default function EditBirdScreen() {
 
   const [species, setSpecies] = useState<BirdSpecies>(bird?.species ?? "parrot_budgie");
   const [name, setName] = useState(bird?.name ?? "");
-  const [ageMonths, setAgeMonths] = useState(bird?.ageMonths ? String(bird.ageMonths) : "");
+  const initialTotal = bird?.ageMonths ?? 0;
+  const [ageYears, setAgeYears] = useState(
+    initialTotal > 0 ? String(Math.floor(initialTotal / 12)) : ""
+  );
+  const [ageMonthsExtra, setAgeMonthsExtra] = useState(
+    initialTotal > 0 ? String(initialTotal % 12) : ""
+  );
   const [food, setFood] = useState(bird?.food ?? "");
   const [schedule, setSchedule] = useState(bird?.schedule ?? "");
   const [diseases, setDiseases] = useState((bird?.diseases ?? []).join(", "));
@@ -146,10 +152,13 @@ export default function EditBirdScreen() {
       Alert.alert("Ошибка", "Введите имя птицы");
       return;
     }
+    const years = parseInt(ageYears) || 0;
+    const monthsExtra = parseInt(ageMonthsExtra) || 0;
+    const totalMonths = years * 12 + monthsExtra;
     const data: Partial<Bird> = {
       species,
       name: name.trim(),
-      ageMonths: ageMonths ? parseInt(ageMonths) : undefined,
+      ageMonths: totalMonths > 0 ? totalMonths : undefined,
       food: food.trim() || "Зерновой корм",
       schedule: schedule.trim() || "Кормить утром и вечером",
       diseases: diseases ? diseases.split(",").map((d) => d.trim()).filter(Boolean) : [],
@@ -187,13 +196,14 @@ export default function EditBirdScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         contentContainerStyle={[
           styles.content,
           { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 24) },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        extraKeyboardSpace={100}
       >
         <View style={styles.heroSection}>
           <TouchableOpacity onPress={pickImage} activeOpacity={0.85}>
@@ -251,14 +261,36 @@ export default function EditBirdScreen() {
             value={name}
             onChangeText={setName}
           />
-          <TextInput
-            style={[styles.fieldInput, { color: colors.foreground }]}
-            placeholder="Возраст (в месяцах)"
-            placeholderTextColor={colors.mutedForeground}
-            value={ageMonths}
-            onChangeText={setAgeMonths}
-            keyboardType="number-pad"
-          />
+          <View style={styles.ageRow}>
+            <TextInput
+              style={[
+                styles.fieldInput,
+                styles.ageInput,
+                { color: colors.foreground, borderRightColor: colors.border },
+              ]}
+              placeholder="Возраст: лет"
+              placeholderTextColor={colors.mutedForeground}
+              value={ageYears}
+              onChangeText={(t) => setAgeYears(t.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+            <TextInput
+              style={[styles.fieldInput, styles.ageInput, { color: colors.foreground }]}
+              placeholder="и месяцев"
+              placeholderTextColor={colors.mutedForeground}
+              value={ageMonthsExtra}
+              onChangeText={(t) => {
+                const cleaned = t.replace(/[^0-9]/g, "");
+                const num = parseInt(cleaned, 10);
+                if (cleaned === "" || (Number.isFinite(num) && num <= 11)) {
+                  setAgeMonthsExtra(cleaned);
+                }
+              }}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Карточка ухода</Text>
@@ -445,7 +477,7 @@ export default function EditBirdScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }
@@ -519,6 +551,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     borderBottomWidth: 1,
     minHeight: 48,
+  },
+  ageRow: {
+    flexDirection: "row",
+  },
+  ageInput: {
+    flex: 1,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
   },
   locationCol: {
     gap: 8,
