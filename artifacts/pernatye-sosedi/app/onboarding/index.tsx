@@ -1,9 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
-import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -30,36 +29,9 @@ import {
   useApp,
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
-import NativeMap from "@/components/NativeMap";
 import { useColors } from "@/hooks/useColors";
 import { apiRequest } from "@/api/client";
-
-const MOSCOW_CENTER = { latitude: 55.7558, longitude: 37.6173 };
-
-async function reverseGeocode(
-  lat: number,
-  lng: number
-): Promise<{ text: string; city: string }> {
-  try {
-    const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
-    const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`;
-    const res = await fetch(url);
-    const data = await res.json();
-    const geoObject =
-      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
-    const text =
-      geoObject?.metaDataProperty?.GeocoderMetaData?.text ?? "";
-    const components: Array<{ kind: string; name: string }> =
-      geoObject?.metaDataProperty?.GeocoderMetaData?.Address?.Components ?? [];
-    const city =
-      components.find((c) => c.kind === "locality")?.name ??
-      components.find((c) => c.kind === "province")?.name ??
-      "";
-    return { text, city };
-  } catch {
-    return { text: "", city: "" };
-  }
-}
+import { consumePickedLocation } from "@/utils/pickedLocation";
 
 const { width } = Dimensions.get("window");
 
@@ -114,47 +86,21 @@ export default function OnboardingScreen() {
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
-  const [addressLoading, setAddressLoading] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
-  const [locationTriggered, setLocationTriggered] = useState(false);
 
-  const geocodeReqRef = useRef(0);
-  const updateMarker = async (latValue: number, lngValue: number) => {
-    setLat(latValue);
-    setLng(lngValue);
-    setLocationConfirmed(false);
-    setAddressLoading(true);
-    const reqId = ++geocodeReqRef.current;
-    const { text, city: detectedCity } = await reverseGeocode(latValue, lngValue);
-    if (reqId !== geocodeReqRef.current) return; // устаревший ответ
-    setAddress(text);
-    if (detectedCity) setCity(detectedCity);
-    setAddressLoading(false);
-  };
-
-  const [pickerInitialRegion, setPickerInitialRegion] = useState(MOSCOW_CENTER);
-
-  const getLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const location = await Location.getCurrentPositionAsync({});
-        setPickerInitialRegion({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        });
+  // При возврате с экрана выбора места — подхватываем выбранные координаты.
+  useFocusEffect(
+    useCallback(() => {
+      const picked = consumePickedLocation();
+      if (picked) {
+        setLat(picked.lat);
+        setLng(picked.lng);
+        if (picked.address) setAddress(picked.address);
+        if (picked.city) setCity(picked.city);
+        setLocationConfirmed(true);
       }
-    } catch {
-      // не удалось — оставляем центр Москвы
-    }
-  };
-
-  useEffect(() => {
-    if (step === 4 && !locationTriggered) {
-      setLocationTriggered(true);
-      getLocation();
-    }
-  }, [step, locationTriggered]);
+    }, [])
+  );
 
   const totalSteps = 6;
 
@@ -643,64 +589,73 @@ export default function OnboardingScreen() {
               }}
               numberOfLines={2}
             >
-              {addressLoading
-                ? "Определяем адрес…"
-                : address || "Двигайте карту, чтобы выбрать место"}
+              {address || "Откройте карту и выберите место"}
             </Text>
             <View
               style={{
-                flex: 1,
-                borderRadius: 14,
-                overflow: "hidden",
                 borderWidth: 1,
                 borderColor: colors.border,
+                backgroundColor: colors.card,
+                borderRadius: 14,
+                padding: 14,
                 marginBottom: 12,
               }}
             >
-              <NativeMap
-                // key меняется один раз — когда геолокация резолвится и
-                // pickerInitialRegion смещается с центра Москвы. Это
-                // ремаунтит WebView с правильным стартовым центром, после
-                // чего useRef внутри NativeMap «замораживает» его и
-                // пользовательские жесты больше не сбрасываются.
-                key={`picker-${pickerInitialRegion.latitude.toFixed(4)},${pickerInitialRegion.longitude.toFixed(4)}`}
-                mode="locationPicker"
-                region={pickerInitialRegion}
-                zoom={15}
-                onLocationSelected={({ latitude, longitude }) =>
-                  updateMarker(latitude, longitude)
-                }
-              />
-            </View>
-            <TouchableOpacity
-              style={{
-                alignSelf: "stretch",
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: "center",
-                backgroundColor: locationConfirmed
-                  ? colors.secondary
-                  : colors.primary,
-              }}
-              onPress={() => {
-                setLocationConfirmed(true);
-                Haptics.selectionAsync();
-              }}
-              activeOpacity={0.85}
-              disabled={lat === undefined || lng === undefined}
-            >
               <Text
                 style={{
-                  color: locationConfirmed ? colors.foreground : "#fff",
-                  fontFamily: "Inter_600SemiBold",
-                  fontSize: 15,
+                  color: colors.mutedForeground,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 12,
+                  marginBottom: 4,
                 }}
               >
-                {locationConfirmed
-                  ? "✓ Место сохранено"
-                  : "Использовать это место"}
+                Адрес
               </Text>
-            </TouchableOpacity>
+              <Text
+                style={{
+                  color: colors.foreground,
+                  fontFamily: "Inter_500Medium",
+                  fontSize: 15,
+                  marginBottom: 12,
+                }}
+                numberOfLines={3}
+              >
+                {address || "Не указано"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.push({
+                    pathname: "/pick-location",
+                    params: {
+                      ...(lat !== undefined ? { initialLat: String(lat) } : {}),
+                      ...(lng !== undefined ? { initialLng: String(lng) } : {}),
+                    },
+                  });
+                }}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: colors.primary,
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                }}
+              >
+                <Feather name="map" size={16} color="#fff" />
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 15,
+                  }}
+                >
+                  {locationConfirmed ? "✓ Изменить на карте" : "Выбрать на карте"}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View
               style={{
                 flexDirection: "row",

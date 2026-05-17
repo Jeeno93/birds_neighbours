@@ -99,7 +99,8 @@ artifacts/pernatye-sosedi/
 │   ├── neighbors.tsx             # Список птичников с поиском
 │   ├── sit-requests.tsx          # Мои запросы на присмотр
 │   ├── settings.tsx              # Настройки: тема, профиль, данные
-│   └── edit-profile.tsx          # Редактирование своего профиля
+│   ├── edit-profile.tsx          # Редактирование своего профиля
+│   └── pick-location.tsx         # Полноэкранный выбор места на карте (для онбординга и edit-profile)
 ├── api/                          # Клиент для бэкенда Pernatye Sosedi API
 │   └── client.ts                 # apiRequest<T>() — fetch + x-user-id, BASE_URL из EXPO_PUBLIC_API_URL
 ├── components/                   # Переиспользуемые компоненты
@@ -120,6 +121,8 @@ artifacts/pernatye-sosedi/
 │   └── colors.ts                 # Дизайн-токены (light + dark + radius)
 ├── hooks/
 │   └── useColors.ts              # Хук: возвращает токены цветов текущей темы
+├── utils/
+│   └── pickedLocation.ts         # Модульное хранилище: передача результата выбора места между pick-location и инициатором
 ├── types/
 │   └── map.ts                    # Тип Region (зарезервирован для возврата интерактивной карты)
 ├── assets/
@@ -618,24 +621,27 @@ HEX-цвета для каждого статуса:
 
 По завершению создаётся `User` (с координатами `lat`/`lng`, если они определены) и первая `Bird`, вызывается `completeOnboarding()`, происходит редирект на `/(tabs)/map`.
 
-#### Геолокация с картой на шаге «Профиль птичника»
+#### Геолокация на шаге «Профиль птичника»
 
-UI шага 4 — мини-карта Яндекс (`NativeMap`, высота 220, zoom 14) с одним маркером цвета `colors.primary`. Под картой — текст с адресом, ниже — кнопка «Использовать это место».
+Чтобы избежать конфликта жестов карты со скроллом формы, выбор места вынесен в отдельный полноэкранный экран `app/pick-location.tsx`. На шаге 4 онбординга и в `app/edit-profile.tsx` показывается компактная карточка «Адрес» с кнопкой **«Выбрать на карте» / «Изменить на карте»**, которая открывает пикер через `router.push("/pick-location", { initialLat, initialLng })`.
 
-При первом входе на шаг 4 (`useEffect` по `step === 4`) автоматически:
-1. Запрашивается разрешение `Location.requestForegroundPermissionsAsync()` (`expo-location`).
-2. Если granted → `getCurrentPositionAsync()` → `updateMarker(lat, lng)`.
-3. Если denied или ошибка → маркер ставится в центр Москвы (`55.7558, 37.6173`).
+Экран `pick-location.tsx`:
+- Полноэкранный `NativeMap` в режиме `mode="locationPicker"` с фиксированным начальным центром (`initialLat`/`initialLng` либо результат `Location.getCurrentPositionAsync()`).
+- Сверху — карточка с текущим адресом и городом, кнопкой «назад».
+- Снизу — кнопка «Определить автоматически» (`expo-location`) и основная кнопка «Использовать это место».
+- При движении карты вызывается `reverseGeocode(lat, lng)` к Яндекс Геокодеру (`https://geocode-maps.yandex.ru/1.x/?apikey=${EXPO_PUBLIC_YANDEX_MAPS_API_KEY}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`) — берётся `featureMember[0].GeoObject.metaDataProperty.GeocoderMetaData.text` для адреса и компонент с `kind: "locality"` (фолбэк — `province`) для города.
+- По нажатию «Использовать это место» результат записывается в модульное хранилище `utils/pickedLocation.ts` (`setPickedLocation({ lat, lng, address, city })`) и вызывается `router.back()`.
 
-`updateMarker(lat, lng)` сохраняет координаты в state, сбрасывает флаг подтверждения и вызывает `reverseGeocode(lat, lng)` — запрос к Яндекс Геокодеру (`https://geocode-maps.yandex.ru/1.x/?apikey=${EXPO_PUBLIC_YANDEX_MAPS_API_KEY}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`). Извлекается `featureMember[0].GeoObject.metaDataProperty.GeocoderMetaData.text` → отображается как адрес. Координаты пользователю не показываются.
+Инициатор (онбординг или `edit-profile`) подхватывает результат через `useFocusEffect`:
 
-Поведение `NativeMap`:
-- Тап по карте → `onMapPress({ latitude, longitude })` → `updateMarker()` (маркер «прыгает» в новую точку).
-- Маркер `draggable: true` — после `dragend` тоже эмитится `mapPress` с конечными координатами.
+```ts
+useFocusEffect(useCallback(() => {
+  const picked = consumePickedLocation();
+  if (picked) { setLat(picked.lat); setLng(picked.lng); setAddress(picked.address); setCity(picked.city); }
+}, []));
+```
 
-Кнопка «Использовать это место» включает флаг `locationConfirmed` (визуальное подтверждение «✓ Место сохранено», лёгкая haptic). Сами координаты обновляются в state живьём при каждом тапе/перетаскивании, поэтому кнопка не обязательна для прогресса — финальное сохранение `lat`/`lng` происходит в `finish()`. Адрес кладётся в AsyncStorage под ключом `@pernatye_address`.
-
-Та же логика доступна на экране **«Редактировать профиль»** (`app/edit-profile.tsx`): мини-карта с тем же поведением, ссылка «Определить автоматически» рядом с лейблом «Местоположение» вызывает `expo-location`; при первой отрисовке для уже сохранённых `currentUser.lat/lng` подгружается адрес через тот же `reverseGeocode()`.
+`consumePickedLocation()` атомарно возвращает и обнуляет pending-значение, поэтому повторные фокусы экрана не «зальют» старый результат. Хранилище выбрано вместо `router.setParams` потому, что в expo-router нельзя надёжно установить параметры на предыдущем экране после `router.back()`.
 
 Разрешение настроено в `app.json` через плагин `expo-location` с текстом `locationAlwaysAndWhenInUsePermission`: «Приложение использует геолокацию чтобы показывать птичников рядом с вами.»
 

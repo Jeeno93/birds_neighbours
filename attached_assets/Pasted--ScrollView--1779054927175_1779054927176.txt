@@ -1,0 +1,201 @@
+Вынеси выбор местоположения в отдельный полноэкранный экран. Проблема: карта внутри ScrollView конфликтует с жестами скролла.
+1. Создай новый экран app/pick-location.tsx
+Полноэкранный экран с картой — как главный экран карты. Принимает параметры через useLocalSearchParams:
+
+initialLat — начальная широта
+initialLng — начальная долгота
+
+tsximport { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState, useEffect } from 'react';
+import * as Location from 'expo-location';
+import NativeMap from '@/components/NativeMap';
+import { useColors } from '@/hooks/useColors';
+
+export default function PickLocationScreen() {
+  const colors = useColors();
+  const { initialLat, initialLng } = useLocalSearchParams<{
+    initialLat?: string;
+    initialLng?: string;
+  }>();
+
+  const [lat, setLat] = useState(
+    initialLat ? parseFloat(initialLat) : 55.7558
+  );
+  const [lng, setLng] = useState(
+    initialLng ? parseFloat(initialLng) : 37.6173
+  );
+  const [address, setAddress] = useState('Двигайте карту чтобы выбрать место');
+  const [city, setCity] = useState('Москва');
+  const [isGeocoding, setIsGeocoding] = useState(false);
+
+  const reverseGeocode = async (latitude: number, longitude: number) => {
+    setIsGeocoding(true);
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_YANDEX_MAPS_API_KEY;
+      const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${longitude},${latitude}&format=json&results=1&lang=ru_RU`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const obj = data.response.GeoObjectCollection.featureMember[0]?.GeoObject;
+      if (obj) {
+        setAddress(obj.metaDataProperty?.GeocoderMetaData?.text ?? '');
+        const components = obj.metaDataProperty?.GeocoderMetaData?.Address?.Components ?? [];
+        const cityComp = components.find((c: any) =>
+          ['locality', 'province'].includes(c.kind)
+        );
+        if (cityComp) setCity(cityComp.name);
+      }
+    } catch {}
+    setIsGeocoding(false);
+  };
+
+  const handleAutoLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLat(loc.coords.latitude);
+        setLng(loc.coords.longitude);
+        reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!initialLat || !initialLng) {
+      handleAutoLocation();
+    } else {
+      reverseGeocode(parseFloat(initialLat), parseFloat(initialLng));
+    }
+  }, []);
+
+  const handleConfirm = () => {
+    router.back();
+    // Передаём данные через глобальный стейт или router params
+    router.setParams({
+      pickedLat: String(lat),
+      pickedLng: String(lng),
+      pickedAddress: address,
+      pickedCity: city,
+    });
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Адрес сверху */}
+      <View style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+        backgroundColor: colors.card, padding: 16,
+        paddingTop: 52, // safe area
+        shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4,
+        elevation: 4,
+      }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.foreground }}>
+          {isGeocoding ? 'Определяем адрес...' : address}
+        </Text>
+        {city ? (
+          <Text style={{ fontSize: 13, color: colors.mutedForeground, marginTop: 2 }}>
+            {city}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Карта на весь экран */}
+      <NativeMap
+        mode="locationPicker"
+        region={{ latitude: lat, longitude: lng }}
+        onLocationSelected={({ latitude, longitude }) => {
+          setLat(latitude);
+          setLng(longitude);
+          reverseGeocode(latitude, longitude);
+        }}
+      />
+
+      {/* Кнопки снизу */}
+      <View style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10,
+        backgroundColor: colors.card, padding: 16, paddingBottom: 32,
+        shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4,
+        elevation: 4,
+      }}>
+        <TouchableOpacity
+          onPress={handleAutoLocation}
+          style={{
+            borderWidth: 1, borderColor: colors.primary,
+            borderRadius: 12, padding: 14, alignItems: 'center',
+            marginBottom: 12,
+          }}>
+          <Text style={{ color: colors.primary, fontWeight: '600' }}>
+            📍 Определить автоматически
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleConfirm}
+          style={{
+            backgroundColor: colors.primary,
+            borderRadius: 12, padding: 16, alignItems: 'center',
+          }}>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>
+            Использовать это место
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+2. Обнови app/edit-profile.tsx
+Убери карту из формы полностью. Вместо неё — карточка с текущим адресом и кнопка:
+tsximport { router, useLocalSearchParams } from 'expo-router';
+
+// Следи за возвращёнными параметрами
+const params = useLocalSearchParams<{
+  pickedLat?: string;
+  pickedLng?: string;
+  pickedAddress?: string;
+  pickedCity?: string;
+}>();
+
+useEffect(() => {
+  if (params.pickedLat && params.pickedLng) {
+    setLat(parseFloat(params.pickedLat));
+    setLng(parseFloat(params.pickedLng));
+    setAddress(params.pickedAddress ?? '');
+    setCity(params.pickedCity ?? city);
+  }
+}, [params.pickedLat, params.pickedLng]);
+
+// UI карточки местоположения:
+<View style={{ borderWidth: 1, borderColor: colors.border,
+  borderRadius: 12, padding: 14, marginBottom: 16 }}>
+  <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 4 }}>
+    Местоположение
+  </Text>
+  <Text style={{ color: colors.foreground, fontSize: 15, marginBottom: 12 }}>
+    {address || 'Не указано'}
+  </Text>
+  <TouchableOpacity
+    onPress={() => router.push({
+      pathname: '/pick-location',
+      params: {
+        initialLat: String(lat),
+        initialLng: String(lng),
+      }
+    })}
+    style={{
+      borderWidth: 1, borderColor: colors.primary,
+      borderRadius: 8, padding: 10, alignItems: 'center',
+    }}>
+    <Text style={{ color: colors.primary, fontWeight: '600' }}>
+      🗺️ Изменить на карте
+    </Text>
+  </TouchableOpacity>
+</View>
+3. Обнови онбординг app/onboarding/index.tsx
+На шаге профиля (шаг 4) — та же логика. Убери встроенную карту, добавь кнопку «Выбрать на карте» которая открывает /pick-location. При возврате — подхватывай параметры через useLocalSearchParams.
+4. Добавь app/pick-location.tsx в роутинг
+Убедись что файл создан в папке app/ и expo-router его подхватит автоматически. Заголовок экрана — «Выбор места».
+5. Проверь typecheck:
+bashpnpm --filter @workspace/pernatye-sosedi run typecheck
+6. Увеличь versionCode до 22.
+7. Обнови DOCUMENTATION.md — добавь экран pick-location.tsx в структуру проекта.

@@ -35,6 +35,7 @@ function RootLayoutNav() {
       <Stack.Screen name="article/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="settings" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="edit-profile" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="pick-location" options={{ headerShown: false, animation: "slide_from_bottom", title: "Выбор места" }} />
     </Stack>
   );
 }
