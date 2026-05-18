@@ -1,4 +1,3 @@
-import * as Location from "expo-location";
 import React, { useCallback, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
@@ -25,6 +24,11 @@ export interface MapPressCoords {
   longitude: number;
 }
 
+export interface PickerLocation extends MapPressCoords {
+  address?: string;
+  city?: string;
+}
+
 export type NativeMapMode = "default" | "locationPicker";
 
 interface NativeMapProps {
@@ -33,7 +37,10 @@ interface NativeMapProps {
   onMarkerPress?: (id: string) => void;
   onMapPress?: (coords: MapPressCoords) => void;
   mode?: NativeMapMode;
-  onLocationSelected?: (coords: MapPressCoords) => void;
+  onLocationSelected?: (loc: PickerLocation) => void;
+  onConfirm?: (loc: PickerLocation) => void;
+  initialLat?: number;
+  initialLng?: number;
   zoom?: number;
 }
 
@@ -133,7 +140,7 @@ function buildDefaultHtml(
 </html>`;
 }
 
-function buildPickerHtml(region: Region, apiKey: string, zoom: number): string {
+function buildPickerHtml(apiKey: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -143,77 +150,199 @@ function buildPickerHtml(region: Region, apiKey: string, zoom: number): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
     #map { width: 100%; height: 100%; }
-    #centerMarker {
+
+    #address-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: white;
+      padding: 16px;
+      padding-top: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    #address-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a1a2e;
+      line-height: 1.3;
+    }
+    #address-sub {
+      font-size: 13px;
+      color: #6b7c71;
+      margin-top: 2px;
+    }
+
+    #center-marker {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -100%);
-      font-size: 32px;
-      line-height: 32px;
+      font-size: 36px;
       z-index: 1000;
       pointer-events: none;
-      filter: drop-shadow(0 2px 3px rgba(0,0,0,0.35));
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
     }
-    #geoBtn {
+
+    #confirm-btn {
       position: absolute;
-      bottom: 16px;
+      bottom: 32px;
+      left: 16px;
       right: 16px;
-      width: 44px;
-      height: 44px;
-      border-radius: 22px;
-      background: #fff;
-      border: none;
-      font-size: 20px;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
+      background: #2d7d52;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    #confirm-btn:disabled {
+      opacity: 0.6;
     }
   </style>
 </head>
 <body>
+  <div id="address-bar">
+    <div id="address-text">Определяем местоположение…</div>
+    <div id="address-sub"></div>
+  </div>
+
   <div id="map"></div>
-  <div id="centerMarker">📍</div>
-  <button id="geoBtn" type="button">➤</button>
-  <script>
-    window.region = ${JSON.stringify(region)};
-    window.mapZoom = ${zoom};
-  </script>
+  <div id="center-marker">📍</div>
+
+  <button id="confirm-btn" type="button">Подтвердить адрес</button>
+
   <script src="https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU" type="text/javascript"></script>
   <script>
-    ymaps.ready(function () {
-      var map = new ymaps.Map('map', {
-        center: [window.region.latitude, window.region.longitude],
-        zoom: window.mapZoom,
-        controls: []
-      });
-      window.__map = map;
+    var DEFAULT_LAT = 55.7558;
+    var DEFAULT_LNG = 37.6173;
+    var lastLat = (typeof window.initialLat === 'number') ? window.initialLat : DEFAULT_LAT;
+    var lastLng = (typeof window.initialLng === 'number') ? window.initialLng : DEFAULT_LNG;
+    var lastAddress = '';
+    var lastCity = '';
+    var geocodeTimer = null;
+    var geocodeReqId = 0;
+    var map;
 
-      function postCenter() {
+    function postMsg(payload) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      }
+    }
+
+    function reverseGeocode(lat, lng) {
+      clearTimeout(geocodeTimer);
+      geocodeTimer = setTimeout(function() {
+        var reqId = ++geocodeReqId;
+        ymaps.geocode([lat, lng], { results: 1 }).then(function(res) {
+          if (reqId !== geocodeReqId) return;
+          var obj = res.geoObjects.get(0);
+          if (!obj) return;
+          var address = obj.getAddressLine();
+          var city = '';
+          var components = obj.properties.get('metaDataProperty.GeocoderMetaData.Address.Components') || [];
+          for (var i = 0; i < components.length; i++) {
+            if (components[i].kind === 'locality') { city = components[i].name; break; }
+          }
+          if (!city) {
+            for (var j = 0; j < components.length; j++) {
+              if (components[j].kind === 'province') { city = components[j].name; break; }
+            }
+          }
+          lastLat = lat;
+          lastLng = lng;
+          lastAddress = address;
+          lastCity = city;
+          document.getElementById('address-text').textContent = address || 'Адрес не найден';
+          document.getElementById('address-sub').textContent = city;
+          postMsg({
+            type: 'addressUpdated',
+            latitude: lat,
+            longitude: lng,
+            address: address,
+            city: city
+          });
+        });
+      }, 400);
+    }
+
+    ymaps.ready(function() {
+      map = new ymaps.Map('map', {
+        center: [lastLat, lastLng],
+        zoom: 16,
+        controls: ['geolocationControl', 'zoomControl']
+      });
+
+      // Отступы под address-bar сверху и кнопку снизу — чтобы Яндекс
+      // позиционировал свои контролы (геолокация, зум) с учётом UI.
+      try {
+        map.margin.addArea({ top: 0, left: 0, right: 0, width: 9999, height: 80 });
+        map.margin.addArea({ bottom: 0, left: 0, right: 0, width: 9999, height: 110 });
+      } catch (e) {}
+
+      map.events.add('actionend', function() {
         var c = map.getCenter();
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'centerChanged',
-            latitude: c[0],
-            longitude: c[1]
-          }));
-        }
+        reverseGeocode(c[0], c[1]);
+      });
+
+      var geolocationControl = map.controls.get('geolocationControl');
+      if (geolocationControl && geolocationControl.events) {
+        geolocationControl.events.add('locationchange', function(e) {
+          var position = e.get('position');
+          if (position) {
+            map.setCenter(position, 16);
+            reverseGeocode(position[0], position[1]);
+          }
+        });
       }
 
-      map.events.add('actionend', postCenter);
-
-      // initial centerChanged so parent gets the starting address
-      setTimeout(postCenter, 50);
-
-      document.getElementById('geoBtn').addEventListener('click', function() {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'requestGeo'
-          }));
+      // Если переданы начальные координаты — центрируемся на них и геокодим.
+      // Если нет — пытаемся автоматически определить браузерную геолокацию.
+      if (typeof window.initialLat === 'number' && typeof window.initialLng === 'number') {
+        map.setCenter([window.initialLat, window.initialLng], 16);
+        reverseGeocode(window.initialLat, window.initialLng);
+      } else {
+        try {
+          ymaps.geolocation
+            .get({ provider: 'browser', mapStateAutoApply: false })
+            .then(function(result) {
+              var pos = result.geoObjects.get(0);
+              if (pos) {
+                var coords = pos.geometry.getCoordinates();
+                map.setCenter(coords, 16);
+                reverseGeocode(coords[0], coords[1]);
+              } else {
+                reverseGeocode(lastLat, lastLng);
+              }
+            })
+            .catch(function() {
+              reverseGeocode(lastLat, lastLng);
+            });
+        } catch (e) {
+          reverseGeocode(lastLat, lastLng);
         }
+      }
+    });
+
+    document.getElementById('confirm-btn').addEventListener('click', function() {
+      var lat = lastLat;
+      var lng = lastLng;
+      if (map) {
+        var c = map.getCenter();
+        lat = c[0];
+        lng = c[1];
+      }
+      postMsg({
+        type: 'confirmed',
+        latitude: lat,
+        longitude: lng,
+        address: lastAddress,
+        city: lastCity
       });
     });
   </script>
@@ -228,13 +357,12 @@ export default function NativeMap({
   onMapPress,
   mode = "default",
   onLocationSelected,
+  onConfirm,
+  initialLat,
+  initialLng,
   zoom = 11,
 }: NativeMapProps) {
   const webViewRef = useRef<WebView>(null);
-
-  // For picker mode, capture the initial region once so user pans aren't
-  // overwritten by parent state changes (parent gets coords via callback).
-  const initialRegionRef = useRef<Region>(region);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -252,7 +380,7 @@ export default function NativeMap({
           onMapPress({ latitude: data.latitude, longitude: data.longitude });
         }
         if (
-          data?.type === "centerChanged" &&
+          data?.type === "addressUpdated" &&
           typeof data.latitude === "number" &&
           typeof data.longitude === "number" &&
           onLocationSelected
@@ -260,38 +388,50 @@ export default function NativeMap({
           onLocationSelected({
             latitude: data.latitude,
             longitude: data.longitude,
+            address: typeof data.address === "string" ? data.address : undefined,
+            city: typeof data.city === "string" ? data.city : undefined,
           });
         }
-        if (data?.type === "requestGeo") {
-          (async () => {
-            try {
-              const { status } = await Location.requestForegroundPermissionsAsync();
-              if (status !== "granted") return;
-              const loc = await Location.getCurrentPositionAsync({});
-              const lat = loc.coords.latitude;
-              const lng = loc.coords.longitude;
-              webViewRef.current?.injectJavaScript(
-                `if (window.__map) { window.__map.setCenter([${lat}, ${lng}], 16, { duration: 250 }); } true;`
-              );
-            } catch {
-              // ignore — пользователь подвинет карту вручную
-            }
-          })();
+        if (
+          data?.type === "confirmed" &&
+          typeof data.latitude === "number" &&
+          typeof data.longitude === "number" &&
+          onConfirm
+        ) {
+          onConfirm({
+            latitude: data.latitude,
+            longitude: data.longitude,
+            address: typeof data.address === "string" ? data.address : undefined,
+            city: typeof data.city === "string" ? data.city : undefined,
+          });
         }
       } catch {
         // ignore malformed payloads
       }
     },
-    [onMarkerPress, onMapPress, onLocationSelected]
+    [onMarkerPress, onMapPress, onLocationSelected, onConfirm]
   );
 
   const html = useMemo(() => {
     if (mode === "locationPicker") {
-      return buildPickerHtml(initialRegionRef.current, YANDEX_API_KEY, zoom);
+      return buildPickerHtml(YANDEX_API_KEY);
     }
     return buildDefaultHtml(region, markers, YANDEX_API_KEY, zoom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, region, markers, zoom]);
+
+  const injectedBeforeLoad = useMemo(() => {
+    if (mode !== "locationPicker") return undefined;
+    const latLit =
+      typeof initialLat === "number" && Number.isFinite(initialLat)
+        ? String(initialLat)
+        : "undefined";
+    const lngLit =
+      typeof initialLng === "number" && Number.isFinite(initialLng)
+        ? String(initialLng)
+        : "undefined";
+    return `window.initialLat = ${latLit}; window.initialLng = ${lngLit}; true;`;
+  }, [mode, initialLat, initialLng]);
 
   return (
     <View style={styles.container}>
@@ -304,6 +444,8 @@ export default function NativeMap({
         domStorageEnabled
         originWhitelist={["*"]}
         mixedContentMode="always"
+        geolocationEnabled
+        injectedJavaScriptBeforeContentLoaded={injectedBeforeLoad}
         onError={(e) => console.warn("WebView error:", e.nativeEvent)}
       />
     </View>

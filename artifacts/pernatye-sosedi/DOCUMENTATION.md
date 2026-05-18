@@ -625,12 +625,16 @@ HEX-цвета для каждого статуса:
 
 Чтобы избежать конфликта жестов карты со скроллом формы, выбор места вынесен в отдельный полноэкранный экран `app/pick-location.tsx`. На шаге 4 онбординга и в `app/edit-profile.tsx` показывается компактная карточка «Адрес» с кнопкой **«Выбрать на карте» / «Изменить на карте»**, которая открывает пикер через `router.push("/pick-location", { initialLat, initialLng })`.
 
-Экран `pick-location.tsx`:
-- Полноэкранный `NativeMap` в режиме `mode="locationPicker"` с фиксированным начальным центром (`initialLat`/`initialLng` либо результат `Location.getCurrentPositionAsync()`).
-- Сверху — карточка с текущим адресом и городом, кнопкой «назад».
-- Снизу — кнопка «Определить автоматически» (`expo-location`) и основная кнопка «Использовать это место».
-- При движении карты вызывается `reverseGeocode(lat, lng)` к Яндекс Геокодеру (`https://geocode-maps.yandex.ru/1.x/?apikey=${EXPO_PUBLIC_YANDEX_MAPS_API_KEY}&geocode=${lng},${lat}&format=json&results=1&lang=ru_RU`) — берётся `featureMember[0].GeoObject.metaDataProperty.GeocoderMetaData.text` для адреса и компонент с `kind: "locality"` (фолбэк — `province`) для города.
-- По нажатию «Использовать это место» результат записывается в модульное хранилище `utils/pickedLocation.ts` (`setPickedLocation({ lat, lng, address, city })`) и вызывается `router.back()`.
+Экран `pick-location.tsx` — это минимальная RN-обёртка вокруг `NativeMap` в режиме `mode="locationPicker"`. Весь UI пикера (адрес сверху, фиксированный маркер 📍 в центре, кнопка «Подтвердить адрес» снизу, встроенный контрол геолокации Яндекса) реализован прямо внутри WebView — по аналогии с Яндекс Едой и ВкусВилл. Карта двигается под маркером, адрес обновляется в реальном времени через `ymaps.geocode([lat, lng])` с дебаунсом 400 мс и счётчиком `geocodeReqId` (отбрасывает устаревшие ответы).
+
+Поток данных WebView → RN:
+- `addressUpdated` — на каждое `actionend` карты, payload `{ latitude, longitude, address, city }`. RN-сторона записывает результат в `lastLocationRef` через колбэк `onLocationSelected: (loc: PickerLocation) => void`.
+- `confirmed` — по нажатию «Подтвердить адрес». Payload содержит последний центр карты вместе с адресом и городом (WebView сама хранит `lastAddress` / `lastCity`). RN-колбэк `onConfirm` сохраняет результат в `utils/pickedLocation.ts` и вызывает `router.back()`.
+
+Геолокация:
+- Контрол `geolocationControl` (встроенный в `ymaps.Map`) даёт пользователю стрелку «определить местоположение» прямо на карте. На `locationchange` карта центрируется и геокодирует точку.
+- При первом открытии — если переданы `initialLat`/`initialLng` через `useLocalSearchParams`, они инжектируются в WebView через `injectedJavaScriptBeforeContentLoaded` (`window.initialLat`/`window.initialLng`) и карта центрируется на них. Иначе вызывается `ymaps.geolocation.get({ provider: 'browser' })` (WebView создаётся с `geolocationEnabled`).
+- Никакой отдельной кнопки «Определить автоматически» и никаких RN-вызовов `expo-location`/HTTP geocode из `pick-location.tsx` больше нет — всё происходит внутри WebView.
 
 Инициатор (онбординг или `edit-profile`) подхватывает результат через `useFocusEffect`:
 
@@ -645,11 +649,16 @@ useFocusEffect(useCallback(() => {
 
 Разрешение настроено в `app.json` через плагин `expo-location` с текстом `locationAlwaysAndWhenInUsePermission`: «Приложение использует геолокацию чтобы показывать птичников рядом с вами.»
 
-#### NativeMap.tsx — пропсы для пикера
+#### NativeMap.tsx — пропсы
 
-- `onMapPress?: (coords: { latitude: number; longitude: number }) => void` — вызывается на клик по карте и на `dragend` любого `draggable` маркера. В HTML добавлен `map.events.add('click', …)` который через `window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapPress', latitude, longitude }))` пробрасывает координаты в RN.
-- `zoom?: number` — начальный зум (по умолчанию 11).
-- `MarkerData.draggable?: boolean` — включает `draggable: true` в опциях `Placemark` и подписывается на `dragend`.
+- `mode?: 'default' | 'locationPicker'` — переключает HTML-шаблон внутри WebView.
+- `onMapPress?: (coords: { latitude: number; longitude: number }) => void` — клик по карте / `dragend` `draggable` маркера (только `default`).
+- `onMarkerPress?: (id: string) => void` — клик по маркеру (только `default`).
+- `onLocationSelected?: (loc: PickerLocation) => void` — на каждое движение карты в режиме `locationPicker` (payload включает `address` и `city`).
+- `onConfirm?: (loc: PickerLocation) => void` — по нажатию «Подтвердить адрес» внутри WebView.
+- `initialLat?: number`, `initialLng?: number` — стартовые координаты пикера; инжектируются в WebView через `injectedJavaScriptBeforeContentLoaded` (`window.initialLat` / `window.initialLng`) до загрузки HTML.
+- `zoom?: number` — начальный зум для `default` (в `locationPicker` всегда 16).
+- `MarkerData.draggable?: boolean` — включает `draggable: true` в опциях `Placemark`.
 
 ---
 
