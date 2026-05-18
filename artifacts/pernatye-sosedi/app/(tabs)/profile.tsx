@@ -132,15 +132,17 @@ export default function ProfileScreen() {
               <Text style={[styles.profileName, { color: colors.foreground }]}>
                 {currentUser.name}
               </Text>
-              <View style={styles.row}>
-                <Feather name="map-pin" size={13} color={colors.mutedForeground} />
-                <Text
-                  style={[styles.district, { color: colors.mutedForeground }]}
-                  numberOfLines={2}
-                >
-                  {" "}{currentUser.address || currentUser.district}
-                </Text>
-              </View>
+              {(currentUser.address || currentUser.city) ? (
+                <View style={styles.row}>
+                  <Feather name="map-pin" size={13} color={colors.mutedForeground} />
+                  <Text
+                    style={[styles.district, { color: colors.mutedForeground }]}
+                    numberOfLines={2}
+                  >
+                    {" "}{currentUser.address || currentUser.city}
+                  </Text>
+                </View>
+              ) : null}
               <Text style={[styles.experience, { color: colors.mutedForeground }]}>
                 {currentUser.experienceYears} {getYearsLabel(currentUser.experienceYears)} с птицами
               </Text>

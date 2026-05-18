@@ -93,7 +93,7 @@ export default function MapScreen() {
             id: n.id,
             latitude: n.lat,
             longitude: n.lng,
-            title: `${n.name} · ${n.address || n.district}`,
+            title: (n.address || n.city) ? `${n.name} · ${n.address || n.city}` : n.name,
             isSelected: false,
             markerColor: compatible ? undefined : "#9ca3af",
           };

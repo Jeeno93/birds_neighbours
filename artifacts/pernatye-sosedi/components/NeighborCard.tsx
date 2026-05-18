@@ -56,15 +56,17 @@ export function NeighborCard({ user, onPress, mayNotMatch }: NeighborCardProps) 
             </Text>
           </View>
         )}
-        <View style={styles.row}>
-          <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-          <Text
-            style={[styles.district, { color: colors.mutedForeground }]}
-            numberOfLines={2}
-          >
-            {" "}{user.address || user.district}
-          </Text>
-        </View>
+        {(user.address || user.city) ? (
+          <View style={styles.row}>
+            <Feather name="map-pin" size={12} color={colors.mutedForeground} />
+            <Text
+              style={[styles.district, { color: colors.mutedForeground }]}
+              numberOfLines={2}
+            >
+              {" "}{user.address || user.city}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.row}>
           <RatingStars rating={user.rating} size={12} />
         </View>
