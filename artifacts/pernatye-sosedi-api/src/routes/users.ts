@@ -4,6 +4,12 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
+// Правило Telegram: 5–32 символа, [A-Za-z0-9_], начинается с буквы.
+const TELEGRAM_USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{4,31}$/;
+function isValidTelegramUsername(handle: unknown): handle is string {
+  return typeof handle === "string" && TELEGRAM_USERNAME_RE.test(handle);
+}
+
 function rowToUser(row: any) {
   if (!row) return null;
   return {
@@ -105,6 +111,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
 
     const {
       name,
+      telegramId,
       district,
       address,
       addressComment,
@@ -119,6 +126,12 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
       photoUrl,
     } = req.body ?? {};
 
+    // Telegram-username валидируем на бэке: битый хендл ломает контакт с соседом.
+    if (telegramId !== undefined && !isValidTelegramUsername(telegramId)) {
+      res.status(400).json({ error: "Invalid telegram username" });
+      return;
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     const push = (col: string, val: unknown) => {
@@ -127,6 +140,7 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
     };
 
     if (name !== undefined) push("name", name);
+    if (telegramId !== undefined) push("telegram_id", telegramId);
     if (district !== undefined) push("district", district);
     if (address !== undefined) push("address", address);
     if (addressComment !== undefined) push("address_comment", addressComment);
@@ -153,7 +167,12 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
       return;
     }
     res.json(rowToUser(result.rows[0]));
-  } catch (err) {
+  } catch (err: any) {
+    // 23505 — нарушение UNIQUE (telegram_id уже занят другим пользователем).
+    if (err?.code === "23505") {
+      res.status(409).json({ error: "Telegram username already taken" });
+      return;
+    }
     console.error("PUT /api/users/:id error:", err);
     res.status(500).json({ error: "Internal server error" });
   }

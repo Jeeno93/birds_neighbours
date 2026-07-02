@@ -15,6 +15,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { extractDistrictFromAddress, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { consumePickedLocation } from "@/utils/pickedLocation";
+import {
+  normalizeTelegramUsername,
+  isValidTelegramUsername,
+  isContactableTelegram,
+} from "@/utils/telegram";
 
 export default function EditProfileScreen() {
   const colors = useColors();
@@ -22,6 +27,13 @@ export default function EditProfileScreen() {
   const { currentUser, setCurrentUser } = useApp();
 
   const [name, setName] = useState(currentUser?.name ?? "");
+  // Показываем текущий хендл только если он валиден; битый (email/`tg_<n>`)
+  // не подставляем, чтобы юзер ввёл корректный заново.
+  const [telegram, setTelegram] = useState(
+    currentUser && isContactableTelegram(currentUser.telegramId)
+      ? currentUser.telegramId
+      : ""
+  );
   const [experienceText, setExperienceText] = useState(
     String(currentUser?.experienceYears ?? 0)
   );
@@ -68,6 +80,14 @@ export default function EditProfileScreen() {
       Alert.alert("Ошибка", "Введите имя");
       return;
     }
+    const handle = normalizeTelegramUsername(telegram);
+    if (!isValidTelegramUsername(handle)) {
+      Alert.alert(
+        "Проверьте Telegram",
+        "Username: 5–32 символа, латиница/цифры/_, начинается с буквы. Без @ и без email."
+      );
+      return;
+    }
     const parsedYears = parseInt(experienceText, 10);
     const experienceYears =
       Number.isFinite(parsedYears) && parsedYears >= 0 ? parsedYears : 0;
@@ -78,6 +98,7 @@ export default function EditProfileScreen() {
     await setCurrentUser({
       ...currentUser,
       name: trimmedName,
+      telegramId: handle,
       city: city || currentUser.city || "Москва",
       district: derivedDistrict,
       address: address || currentUser.address,
@@ -138,6 +159,45 @@ export default function EditProfileScreen() {
           value={name}
           onChangeText={setName}
         />
+
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>
+          Telegram для связи
+        </Text>
+        <View
+          style={[
+            styles.input,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingVertical: 0,
+            },
+          ]}
+        >
+          <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 15 }}>
+            @
+          </Text>
+          <TextInput
+            style={{
+              flex: 1,
+              color: colors.foreground,
+              fontFamily: "Inter_400Regular",
+              fontSize: 15,
+              paddingVertical: 14,
+              paddingLeft: 2,
+            }}
+            placeholder="username"
+            placeholderTextColor={colors.mutedForeground}
+            value={telegram}
+            onChangeText={setTelegram}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 4 }}>
+          По нему соседи напишут вам — кнопка «Написать в Telegram».
+        </Text>
 
         <Text style={[styles.label, { color: colors.mutedForeground }]}>
           Местоположение

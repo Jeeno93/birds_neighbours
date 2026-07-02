@@ -32,6 +32,7 @@ import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
 import { useColors } from "@/hooks/useColors";
 import { apiRequest } from "@/api/client";
 import { consumePickedLocation } from "@/utils/pickedLocation";
+import { normalizeTelegramUsername, isValidTelegramUsername } from "@/utils/telegram";
 
 const { width } = Dimensions.get("window");
 
@@ -82,6 +83,7 @@ export default function OnboardingScreen() {
   const [helpStatus] = useState<"ready" | "sometimes" | "not_now">("ready");
   const [userName, setUserName] = useState("Александр");
   const [telegramUsername, setTelegramUsername] = useState("");
+  const [tgError, setTgError] = useState<string | null>(null);
   const [lat, setLat] = useState<number | undefined>(undefined);
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [address, setAddress] = useState("");
@@ -105,6 +107,22 @@ export default function OnboardingScreen() {
   const totalSteps = 6;
 
   const goNext = () => {
+    // Шаг «auth» (индекс 1): имя и валидный Telegram-username обязательны —
+    // контакт через Telegram это ядро продукта, битый хендл ломает весь поток.
+    if (step === 1) {
+      if (!userName.trim()) {
+        setTgError("Введите ваше имя");
+        return;
+      }
+      const handle = normalizeTelegramUsername(telegramUsername);
+      if (!isValidTelegramUsername(handle)) {
+        setTgError(
+          "Укажите Telegram-username: 5–32 символа, латиница/цифры/_, без @ и email"
+        );
+        return;
+      }
+      setTgError(null);
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (step < totalSteps - 1) {
       const nextStep = step + 1;
@@ -121,8 +139,8 @@ export default function OnboardingScreen() {
   };
 
   const finish = async () => {
-    const tgUsername = telegramUsername.trim().replace(/^@/, "");
-    const telegramId = tgUsername || "tg_" + Date.now();
+    // К этому моменту хендл уже провалидирован на шаге auth (goNext).
+    const telegramId = normalizeTelegramUsername(telegramUsername);
 
     let userId: string;
     let baseUser: Partial<User>;
@@ -285,14 +303,27 @@ export default function OnboardingScreen() {
               onChangeText={setUserName}
             />
             <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="username"
+              style={[
+                styles.input,
+                {
+                  borderColor: tgError ? "#e5484d" : colors.border,
+                  color: colors.foreground,
+                  backgroundColor: colors.card,
+                },
+              ]}
+              placeholder="username (без @)"
               placeholderTextColor={colors.mutedForeground}
               value={telegramUsername}
-              onChangeText={setTelegramUsername}
+              onChangeText={(t) => {
+                setTelegramUsername(t);
+                if (tgError) setTgError(null);
+              }}
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {tgError && (
+              <Text style={[styles.tgError, { color: "#e5484d" }]}>{tgError}</Text>
+            )}
             <View style={styles.tgNote}>
               <Feather name="shield" size={14} color={colors.primary} />
               <Text style={[styles.tgNoteText, { color: colors.mutedForeground }]}>
@@ -913,6 +944,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 4,
+  },
+  tgError: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    alignSelf: "flex-start",
+    marginTop: 6,
   },
   tgNoteText: {
     fontSize: 12,

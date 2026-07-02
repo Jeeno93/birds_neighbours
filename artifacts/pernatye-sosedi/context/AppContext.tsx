@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { apiRequest } from "@/api/client";
+import { isContactableTelegram } from "@/utils/telegram";
 
 export type HelpStatus = "ready" | "sometimes" | "not_now";
 
@@ -310,25 +311,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
+      const body: Record<string, unknown> = {
+        name: user.name,
+        city: user.city,
+        district: user.district,
+        address: user.address,
+        addressComment: user.addressComment,
+        lat: user.lat,
+        lng: user.lng,
+        helpStatus: user.helpStatus,
+        experienceYears: user.experienceYears,
+        sitTypes: user.sitTypes,
+        capabilities: user.capabilities,
+        otherPets: user.otherPets,
+      };
+      // telegramId шлём только если он валиден: у старых юзеров хендл может
+      // быть битым (email/`tg_<n>`), и бэкенд отклонит весь PUT (400). Такой
+      // юзер всё равно чинит хендл через edit-profile, где значение валидно.
+      if (isContactableTelegram(user.telegramId)) {
+        body.telegramId = user.telegramId;
+      }
       await apiRequest(
         `/api/users/${user.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            name: user.name,
-            city: user.city,
-            district: user.district,
-            address: user.address,
-            addressComment: user.addressComment,
-            lat: user.lat,
-            lng: user.lng,
-            helpStatus: user.helpStatus,
-            experienceYears: user.experienceYears,
-            sitTypes: user.sitTypes,
-            capabilities: user.capabilities,
-            otherPets: user.otherPets,
-          }),
-        },
+        { method: "PUT", body: JSON.stringify(body) },
         user.id
       );
     } catch {

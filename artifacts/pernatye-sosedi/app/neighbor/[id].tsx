@@ -31,6 +31,11 @@ import { Avatar } from "@/components/Avatar";
 import { HelpStatusBadge } from "@/components/HelpStatusBadge";
 import { RatingStars } from "@/components/RatingStars";
 import { useColors } from "@/hooks/useColors";
+import {
+  isContactableTelegram,
+  telegramDeepLink,
+  telegramWebUrl,
+} from "@/utils/telegram";
 
 export default function NeighborProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -158,10 +163,12 @@ export default function NeighborProfileScreen() {
     );
   }
 
+  const canContact = isContactableTelegram(neighbor.telegramId);
+
   const openTelegram = () => {
-    const url = `tg://resolve?domain=${neighbor.telegramId}`;
-    Linking.canOpenURL(url).then((supported) => {
-      Linking.openURL(supported ? url : `https://t.me/${neighbor.telegramId}`);
+    const deep = telegramDeepLink(neighbor.telegramId);
+    Linking.canOpenURL(deep).then((supported) => {
+      Linking.openURL(supported ? deep : telegramWebUrl(neighbor.telegramId));
     });
   };
 
@@ -238,14 +245,23 @@ export default function NeighborProfileScreen() {
               ))}
             </View>
           ) : null}
-          <TouchableOpacity
-            style={[styles.tgBtn, { backgroundColor: colors.primary }]}
-            onPress={openTelegram}
-            activeOpacity={0.8}
-          >
-            <Feather name="send" size={16} color="#fff" />
-            <Text style={styles.tgBtnText}>Написать в Telegram</Text>
-          </TouchableOpacity>
+          {canContact ? (
+            <TouchableOpacity
+              style={[styles.tgBtn, { backgroundColor: colors.primary }]}
+              onPress={openTelegram}
+              activeOpacity={0.8}
+            >
+              <Feather name="send" size={16} color="#fff" />
+              <Text style={styles.tgBtnText}>Написать в Telegram</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.tgBtn, { backgroundColor: colors.muted }]}>
+              <Feather name="alert-circle" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.tgBtnText, { color: colors.mutedForeground }]}>
+                Контакт не указан
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>

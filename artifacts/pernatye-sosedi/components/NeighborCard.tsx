@@ -13,6 +13,11 @@ import { Avatar } from "./Avatar";
 import { HelpStatusBadge } from "./HelpStatusBadge";
 import { RatingStars } from "./RatingStars";
 import { useColors } from "@/hooks/useColors";
+import {
+  isContactableTelegram,
+  telegramDeepLink,
+  telegramWebUrl,
+} from "@/utils/telegram";
 
 interface NeighborCardProps {
   user: User;
@@ -25,10 +30,12 @@ export function NeighborCard({ user, onPress, mayNotMatch }: NeighborCardProps) 
 
   const handlePress = onPress || (() => router.push(`/neighbor/${user.id}`));
 
+  const canContact = isContactableTelegram(user.telegramId);
+
   const openTelegram = () => {
-    const url = `tg://resolve?domain=${user.telegramId}`;
-    Linking.canOpenURL(url).then((supported) => {
-      Linking.openURL(supported ? url : `https://t.me/${user.telegramId}`);
+    const deep = telegramDeepLink(user.telegramId);
+    Linking.canOpenURL(deep).then((supported) => {
+      Linking.openURL(supported ? deep : telegramWebUrl(user.telegramId));
     });
   };
 
@@ -86,13 +93,15 @@ export function NeighborCard({ user, onPress, mayNotMatch }: NeighborCardProps) 
           </View>
         ) : null}
       </View>
-      <TouchableOpacity
-        style={[styles.telegramBtn, { backgroundColor: colors.primary }]}
-        onPress={openTelegram}
-        activeOpacity={0.8}
-      >
-        <Feather name="send" size={16} color="#fff" />
-      </TouchableOpacity>
+      {canContact && (
+        <TouchableOpacity
+          style={[styles.telegramBtn, { backgroundColor: colors.primary }]}
+          onPress={openTelegram}
+          activeOpacity={0.8}
+        >
+          <Feather name="send" size={16} color="#fff" />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 }
