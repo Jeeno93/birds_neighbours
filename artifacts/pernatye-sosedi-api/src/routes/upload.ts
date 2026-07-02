@@ -21,7 +21,7 @@ export const UPLOAD_DIR =
 
 // База для публичного URL картинки. На проде задать домен API Amvera
 // (за прокси req.protocol может быть http). Пусто → строим из запроса.
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
