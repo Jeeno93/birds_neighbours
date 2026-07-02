@@ -208,12 +208,42 @@ export default function NeighborsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Feather name="users" size={36} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Птичники не найдены
-            </Text>
-          </View>
+          neighbors.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Feather name="users" size={36} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.foreground }]}>
+                В сообществе пока пусто
+              </Text>
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Ты один из первых птичников. Позови знакомых — вместе надёжнее
+                найти, кому доверить питомца.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Feather name="search" size={36} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.foreground }]}>
+                Никого не нашлось
+              </Text>
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Попробуй изменить запрос или сбросить фильтр.
+              </Text>
+              {(query || sitTypeFilter) && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setQuery("");
+                    setSitTypeFilter(null);
+                  }}
+                  style={[styles.resetBtn, { borderColor: colors.primary }]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.resetBtnText, { color: colors.primary }]}>
+                    Сбросить фильтры
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )
         }
       />
     </View>
@@ -300,9 +330,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 60,
-    gap: 12,
+    paddingHorizontal: 32,
+    gap: 10,
   },
-  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  emptyText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptySub: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  resetBtn: {
+    marginTop: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  resetBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   banner: {
     flexDirection: "row",
     alignItems: "center",

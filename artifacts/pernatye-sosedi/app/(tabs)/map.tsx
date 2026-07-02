@@ -7,6 +7,7 @@ import { apiRequest } from "@/api/client";
 import {
   Linking as RNLinking,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -21,6 +22,12 @@ import {
 } from "@/context/AppContext";
 import NativeMap, { MarkerData, Region } from "@/components/NativeMap";
 import { useColors } from "@/hooks/useColors";
+import {
+  normalizeTelegramUsername,
+  isValidTelegramUsername,
+  telegramDeepLink,
+  telegramWebUrl,
+} from "@/utils/telegram";
 
 const REQUEST_MARKER_COLOR = "#f59e0b";
 
@@ -130,6 +137,39 @@ export default function MapScreen() {
     return out;
   }, [visibleRequests, neighbors, selectedRequest?.id]);
 
+  // Центрируем карту на пользователе, если у него есть координаты — тогда
+  // немногочисленные реальные соседи попадают в кадр (а не теряются на общем
+  // виде Москвы). Без координат — общий вид города.
+  const hasUserCoords =
+    typeof currentUser?.lat === "number" && typeof currentUser?.lng === "number";
+  const initialRegion = useMemo<Region>(
+    () =>
+      hasUserCoords
+        ? {
+            latitude: currentUser!.lat as number,
+            longitude: currentUser!.lng as number,
+            latitudeDelta: 0.12,
+            longitudeDelta: 0.12,
+          }
+        : MOSCOW_REGION,
+    [hasUserCoords, currentUser?.lat, currentUser?.lng]
+  );
+
+  const activeMarkers = mapLayer === "community" ? mapMarkers : requestMarkers;
+  const isLayerEmpty = activeMarkers.length === 0;
+
+  const invitePeers = async () => {
+    try {
+      await Share.share({
+        message:
+          "Пернатые соседи — сообщество владельцев птиц для взаимной передержки. " +
+          "Присоединяйся: находи проверенных соседей, кто присмотрит за твоей птицей, пока ты в отъезде 🦜",
+      });
+    } catch {
+      // пользователь закрыл шэр-лист — игнорируем
+    }
+  };
+
   const handleMarkerPress = (id: string) => {
     Haptics.selectionAsync();
     if (mapLayer === "requests") {
@@ -182,20 +222,15 @@ export default function MapScreen() {
     }
   }, [visibleRequests, selectedRequest]);
 
-  // Нормализация Telegram-хендла: убираем @, пробелы, оставляем только
-  // допустимые символы. Это адрес для deep-link, не URL-параметр.
-  const sanitizeTgHandle = (raw: string): string =>
-    raw.trim().replace(/^@+/, "").replace(/[^a-zA-Z0-9_]/g, "");
-
   // Контакт берём из самого запроса — его автор указал явно при создании.
   // На профиль автора больше не полагаемся: мок-`tg_<n>` не открыть в TG.
-  const contactHandle = sanitizeTgHandle(selectedRequest?.contactTelegram ?? "");
-  const hasContact = Boolean(contactHandle);
+  const contactHandle = normalizeTelegramUsername(selectedRequest?.contactTelegram ?? "");
+  const hasContact = isValidTelegramUsername(contactHandle);
 
   const handleRespond = async () => {
-    if (!contactHandle) return;
-    const tg = `tg://resolve?domain=${contactHandle}`;
-    const web = `https://t.me/${encodeURIComponent(contactHandle)}`;
+    if (!hasContact) return;
+    const tg = telegramDeepLink(contactHandle);
+    const web = telegramWebUrl(contactHandle);
     try {
       const supported = await Linking.canOpenURL(tg);
       await RNLinking.openURL(supported ? tg : web);
@@ -217,7 +252,9 @@ export default function MapScreen() {
             Карта птичников
           </Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
-            {filtered.length} рядом
+            {mapLayer === "community"
+              ? `${neighbors.length} птичников`
+              : `${visibleRequests.length} запросов`}
           </Text>
         </View>
         <TouchableOpacity
@@ -291,10 +328,67 @@ export default function MapScreen() {
 
       <View style={styles.mapContainer}>
         <NativeMap
-          region={MOSCOW_REGION}
-          markers={mapLayer === "community" ? mapMarkers : requestMarkers}
+          region={initialRegion}
+          zoom={hasUserCoords ? 13 : 11}
+          markers={activeMarkers}
           onMarkerPress={handleMarkerPress}
         />
+
+        {isLayerEmpty && !selectedRequest && (
+          <View
+            style={[
+              styles.emptyOverlay,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                bottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
+              },
+            ]}
+          >
+            <Feather
+              name={mapLayer === "community" ? "map-pin" : "calendar"}
+              size={24}
+              color={colors.primary}
+            />
+            {mapLayer === "community" ? (
+              <>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                  Рядом пока никого
+                </Text>
+                <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
+                  Ты уже на карте — соседи тебя видят. Позови знакомых птичников,
+                  чтобы рядом было к кому обратиться.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+                  onPress={invitePeers}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="share-2" size={16} color="#fff" />
+                  <Text style={styles.emptyCtaText}>Пригласить соседей</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                  Открытых запросов нет
+                </Text>
+                <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
+                  Когда сосед соберётся в отъезд — запрос на передержку появится
+                  здесь. Нужна помощь с твоей птицей? Создай запрос.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push("/new-request")}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="plus" size={16} color="#fff" />
+                  <Text style={styles.emptyCtaText}>Создать запрос</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
 
         {mapLayer === "requests" && selectedRequest && (
           <View
@@ -503,6 +597,46 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
   },
   mapContainer: { flex: 1 },
+  emptyOverlay: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 20,
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
+  },
+  emptyDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  emptyCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  emptyCtaText: {
+    color: "#fff",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+  },
   hintCard: {
     position: "absolute",
     left: 16,
