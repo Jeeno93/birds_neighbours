@@ -3,8 +3,9 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -26,12 +27,14 @@ import {
 } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
 import { useColors } from "@/hooks/useColors";
+import { uploadImageAsync } from "@/utils/upload";
 
 export default function BirdDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { birds, deleteBird, updateBird } = useApp();
+  const { birds, deleteBird, updateBird, currentUser } = useApp();
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const bird = birds.find((b) => b.id === id);
 
@@ -69,12 +72,20 @@ export default function BirdDetailScreen() {
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (!result.canceled) {
-        await updateBird(bird.id, { photoUrl: result.assets[0].uri });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (result.canceled) return;
+      if (!currentUser?.id) {
+        Alert.alert("Ошибка", "Профиль не найден");
+        return;
       }
-    } catch {
-      Alert.alert("Ошибка", "Не удалось загрузить фото");
+      setUploadingPhoto(true);
+      const asset = result.assets[0];
+      const url = await uploadImageAsync(asset.uri, currentUser.id, asset.mimeType);
+      await updateBird(bird.id, { photoUrl: url });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message || "Не удалось загрузить фото");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -141,7 +152,7 @@ export default function BirdDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroSection}>
-          <TouchableOpacity onPress={pickImage} activeOpacity={0.85}>
+          <TouchableOpacity onPress={pickImage} activeOpacity={0.85} disabled={uploadingPhoto}>
             {bird.photoUrl ? (
               <Image source={{ uri: bird.photoUrl }} style={styles.heroPhoto} resizeMode="cover" />
             ) : (
@@ -149,8 +160,17 @@ export default function BirdDetailScreen() {
                 <BirdSpeciesIcon species={bird.species} size={140} rounded={false} style={{ borderRadius: 16 }} />
               </View>
             )}
+            {uploadingPhoto ? (
+              <View style={styles.photoUploading}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : null}
           </TouchableOpacity>
-          {!bird.photoUrl ? (
+          {uploadingPhoto ? (
+            <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
+              Загрузка фото…
+            </Text>
+          ) : !bird.photoUrl ? (
             <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
               Нажми чтобы добавить фото
             </Text>
@@ -443,6 +463,13 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 12 },
   heroSection: { alignItems: "center", gap: 6, marginBottom: 8 },
   heroPhoto: { width: 120, height: 120, borderRadius: 20 },
+  photoUploading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 20,
+  },
   heroPlaceholder: {
     width: 120,
     height: 120,
