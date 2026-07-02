@@ -27,6 +27,15 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# env files (secrets)
+.env
+.env.local
+*.env
+!.env.example
+
+# локально загруженные фото (на проде — персистентный том Amvera)
+uploads/
+
 # misc
 /.sass-cache
 /connect.lock
