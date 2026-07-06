@@ -16,43 +16,62 @@ import { SIT_TYPE_SHORT, useApp } from "@/context/AppContext";
 import { BirdSpeciesIcon } from "@/components/BirdSpeciesIcon";
 import { useColors } from "@/hooks/useColors";
 
-export default function SitRequestsScreen() {
+export default function RequestsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { sitRequests, birds, updateSitRequest } = useApp();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
+  const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
+
+  const changeStatus = async (id: string, status: "matched" | "closed") => {
+    setPendingId(id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await updateSitRequest(id, { status });
+    } finally {
+      setPendingId(null);
+    }
+  };
+
   const handleMarkMatched = (id: string) => {
     if (pendingId) return;
     Alert.alert(
-      "Закрыть запрос?",
-      "Подтвердите, что вы нашли ситтера. Запрос исчезнет из общей карты передержек.",
+      "Ситтер найден?",
+      "Подтвердите, что вы нашли, кто присмотрит за птицей. Запрос исчезнет из общей карты передержек.",
       [
         { text: "Отмена", style: "cancel" },
+        { text: "Да, нашёл", onPress: () => changeStatus(id, "matched") },
+      ]
+    );
+  };
+
+  const handleMarkClosed = (id: string) => {
+    if (pendingId) return;
+    Alert.alert(
+      "Передержка состоялась?",
+      "Отметьте, что птицу передержали. Это помогает сообществу и позволит оставить отзыв о ситтере.",
+      [
+        { text: "Ещё нет", style: "cancel" },
         {
-          text: "Да, нашёл",
-          style: "default",
+          text: "Да, состоялась",
           onPress: async () => {
-            setPendingId(id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            try {
-              await updateSitRequest(id, { status: "matched" });
-            } finally {
-              setPendingId(null);
-            }
+            await changeStatus(id, "closed");
+            Alert.alert(
+              "Спасибо!",
+              "Не забудьте оценить ситтера — откройте его профиль (на карте или в списке птичников) и нажмите «Оставить отзыв»."
+            );
           },
         },
       ]
     );
   };
 
-  const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
-
-  const STATUS_LABELS = { open: "Открыт", matched: "Совпадение", closed: "Закрыт" };
+  const STATUS_LABELS = { open: "Открыт", matched: "Ситтер найден", closed: "Состоялась" };
   const STATUS_COLORS = {
     open: colors.primary,
     matched: "#f59e0b",
-    closed: colors.mutedForeground,
+    closed: "#16a34a",
   };
 
   return (
@@ -63,10 +82,7 @@ export default function SitRequestsScreen() {
           { paddingTop: topPad + 8, backgroundColor: colors.headerBg, borderBottomColor: colors.border },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Мои запросы</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Запросы</Text>
         <TouchableOpacity
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
           onPress={() => router.push("/new-request")}
@@ -80,23 +96,23 @@ export default function SitRequestsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.list,
-          { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 16) },
+          { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 16) + 60 },
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="calendar" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              Нет запросов
+              Пока нет запросов
             </Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
-              Создайте запрос, чтобы найти кого-то, кто присмотрит за вашей птицей
+              Уезжаешь? Создай запрос — птичники рядом увидят его и напишут в Telegram.
             </Text>
             <TouchableOpacity
               style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
               onPress={() => router.push("/new-request")}
             >
-              <Text style={styles.emptyBtnText}>Создать запрос</Text>
+              <Text style={styles.emptyBtnText}>Нужна передержка?</Text>
             </TouchableOpacity>
           </View>
         }
@@ -111,11 +127,11 @@ export default function SitRequestsScreen() {
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cardHeader}>
                 <View style={styles.birdRow}>
-                  {requestBirds.length > 0 ? (
-                    requestBirds.map((b) => (
-                      <BirdSpeciesIcon key={b.id} species={b.species} size={26} />
-                    ))
-                  ) : null}
+                  {requestBirds.length > 0
+                    ? requestBirds.map((b) => (
+                        <BirdSpeciesIcon key={b.id} species={b.species} size={26} />
+                      ))
+                    : null}
                   <Text style={[styles.birdName, { color: colors.foreground }]}>
                     {requestBirds.length > 0
                       ? requestBirds.map((b) => b.name).join(", ")
@@ -165,32 +181,50 @@ export default function SitRequestsScreen() {
                   {item.comment}
                 </Text>
               ) : null}
-              <TouchableOpacity
-                style={[styles.findBtn, { borderColor: colors.primary }]}
-                onPress={() => router.push("/neighbors")}
-                activeOpacity={0.8}
-              >
-                <Feather name="users" size={14} color={colors.primary} />
-                <Text style={[styles.findBtnText, { color: colors.primary }]}>
-                  Найти птичника
-                </Text>
-              </TouchableOpacity>
+
+              {item.status !== "closed" && (
+                <TouchableOpacity
+                  style={[styles.findBtn, { borderColor: colors.primary }]}
+                  onPress={() => router.push("/neighbors")}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="users" size={14} color={colors.primary} />
+                  <Text style={[styles.findBtnText, { color: colors.primary }]}>
+                    Найти птичника
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {item.status === "open" && (
                 <TouchableOpacity
                   style={[
-                    styles.matchedBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: pendingId === item.id ? 0.6 : 1,
-                    },
+                    styles.actionBtn,
+                    { backgroundColor: colors.primary, opacity: pendingId === item.id ? 0.6 : 1 },
                   ]}
                   onPress={() => handleMarkMatched(item.id)}
                   disabled={pendingId === item.id}
                   activeOpacity={0.85}
                 >
                   <Feather name="check" size={14} color="#fff" />
-                  <Text style={styles.matchedBtnText}>
+                  <Text style={styles.actionBtnText}>
                     {pendingId === item.id ? " Сохраняем…" : " Нашёл ситтера"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {item.status === "matched" && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    { backgroundColor: "#16a34a", opacity: pendingId === item.id ? 0.6 : 1 },
+                  ]}
+                  onPress={() => handleMarkClosed(item.id)}
+                  disabled={pendingId === item.id}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="check-circle" size={14} color="#fff" />
+                  <Text style={styles.actionBtnText}>
+                    {pendingId === item.id ? " Сохраняем…" : " Передержка состоялась"}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -208,12 +242,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  backBtn: { padding: 4 },
+  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   addBtn: {
     width: 36,
     height: 36,
@@ -222,17 +255,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   list: { padding: 16, gap: 12 },
-  card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    gap: 8,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  card: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   birdRow: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, flexWrap: "wrap" },
   birdName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   sitTypeRow: { fontSize: 13, fontFamily: "Inter_500Medium" },
@@ -245,11 +269,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   statusText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   datesRow: { flexDirection: "row", alignItems: "center" },
   dates: { fontSize: 13, fontFamily: "Inter_400Regular" },
@@ -265,7 +285,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   findBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  matchedBtn: {
+  actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -274,14 +294,16 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 4,
   },
-  matchedBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
+  actionBtnText: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold" },
   emptyState: { alignItems: "center", paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
-  emptyDesc: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, paddingHorizontal: 32 },
+  emptyDesc: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 32,
+  },
   emptyBtn: { paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
   emptyBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
 });

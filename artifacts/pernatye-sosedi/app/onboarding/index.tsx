@@ -18,12 +18,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  Bird,
-  BirdSpecies,
-  SIT_LOCATION_ICONS,
-  SIT_LOCATION_LABELS,
   SPECIES_LABELS,
-  SitLocation,
   User,
   extractDistrictFromAddress,
   useApp,
@@ -36,49 +31,21 @@ import { normalizeTelegramUsername, isValidTelegramUsername } from "@/utils/tele
 
 const { width } = Dimensions.get("window");
 
-const SPECIES_LIST: BirdSpecies[] = [
-  "parrot_budgie",
-  "parrot_corella",
-  "parrot_lovebird",
-  "parrot_rosella",
-  "parrot_amazon",
-  "parrot_jaco",
-  "parrot_ara",
-  "parrot_kakadu",
-  "parrot_eclectus",
-  "parrot_alexandrine",
-  "parakeet_kakariki",
-  "parrot_pyrrhura",
-  "canary",
-  "finch",
-  "pigeon",
-  "other",
-];
-
-const SIT_LOCATIONS: SitLocation[] = ["drop_off", "at_my_home", "flexible"];
-
 export default function OnboardingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { setCurrentUser, addBird, completeOnboarding, neighbors } = useApp();
+  const { setCurrentUser, completeOnboarding, neighbors, currentUser, birds, deleteBird } =
+    useApp();
 
   const [step, setStep] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  const [selectedSpecies, setSelectedSpecies] = useState<BirdSpecies>("parrot_budgie");
-  const [birdName, setBirdName] = useState("");
-  const [addedBirds, setAddedBirds] = useState<
-    Array<{ species: BirdSpecies; name: string }>
-  >([]);
-  const [showBirdForm, setShowBirdForm] = useState(true);
-  const [food, setFood] = useState("");
-  const [schedule, setSchedule] = useState("");
-  const [diseases, setDiseases] = useState("");
-  const [medications, setMedications] = useState("");
-  const [catchNotes, setCatchNotes] = useState("");
-  const [vetNotes, setVetNotes] = useState("");
-  const [sitLocation, setSitLocation] = useState<SitLocation>("flexible");
+  // Птицы добавляются через переиспользуемый экран /add-bird (богатая форма),
+  // поэтому пользователь создаётся заранее (на шаге auth) — чтобы addBird на
+  // том экране синкался в БД. Держим созданного юзера в ref, чтобы не ловить
+  // stale closure между setCurrentUser и последующим чтением.
+  const createdUserRef = useRef<User | null>(null);
   const [experienceYears] = useState("2");
   const [helpStatus] = useState<"ready" | "sometimes" | "not_now">("ready");
   const [userName, setUserName] = useState("Александр");
@@ -104,9 +71,44 @@ export default function OnboardingScreen() {
     }, [])
   );
 
-  const totalSteps = 6;
+  const totalSteps = 5;
 
-  const goNext = () => {
+  // Создаёт пользователя (find-or-create по telegramId) и кладёт в контекст+ref.
+  // Вызывается при уходе с шага auth, чтобы к шагу «Птицы» уже был currentUser
+  // с валидным UUID (иначе addBird на экране /add-bird не синкнулся бы в БД).
+  const ensureUser = async (): Promise<User> => {
+    if (createdUserRef.current) return createdUserRef.current;
+    const telegramId = normalizeTelegramUsername(telegramUsername);
+    let user: User;
+    try {
+      user = await apiRequest<User>("/api/users/auth", {
+        method: "POST",
+        body: JSON.stringify({ telegramId, name: userName.trim() }),
+      });
+    } catch {
+      // API недоступен — локальный (не-UUID) id, оффлайн-режим.
+      user = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        telegramId,
+        name: userName.trim(),
+        city: "Москва",
+        district: "Москва",
+        experienceYears: 2,
+        helpStatus: "ready",
+        sitTypes: [],
+        capabilities: [],
+        otherPets: [],
+        rating: 0,
+        reviewsCount: 0,
+        createdAt: new Date().toISOString(),
+      } as User;
+    }
+    createdUserRef.current = user;
+    await setCurrentUser(user);
+    return user;
+  };
+
+  const goNext = async () => {
     // Шаг «auth» (индекс 1): имя и валидный Telegram-username обязательны —
     // контакт через Telegram это ядро продукта, битый хендл ломает весь поток.
     if (step === 1) {
@@ -122,6 +124,8 @@ export default function OnboardingScreen() {
         return;
       }
       setTgError(null);
+      // Создаём пользователя до шага птиц (чтобы /add-bird синкал в БД).
+      await ensureUser();
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (step < totalSteps - 1) {
@@ -139,110 +143,35 @@ export default function OnboardingScreen() {
   };
 
   const finish = async () => {
-    // К этому моменту хендл уже провалидирован на шаге auth (goNext).
-    const telegramId = normalizeTelegramUsername(telegramUsername);
-
-    let userId: string;
-    let baseUser: Partial<User>;
-
-    try {
-      // POST /api/users/auth — на успехе используем ТОЛЬКО api user.id (UUID).
-      const apiUser = await apiRequest<User>("/api/users/auth", {
-        method: "POST",
-        body: JSON.stringify({ telegramId, name: userName }),
-      });
-      userId = apiUser.id;
-      baseUser = apiUser;
-    } catch {
-      // API недоступен — fallback к локальному id (НЕ-UUID, помечает оффлайн-режим).
-      userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      baseUser = {
-        id: userId,
-        telegramId,
-        rating: 0,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
+    // Пользователь уже создан на шаге auth; здесь только дополняем профиль
+    // локацией/опытом и завершаем онбординг. Птицы уже сохранены через экран
+    // /add-bird. Юзера берём из ref (не из stale-замыкания currentUser).
+    const base = createdUserRef.current ?? (await ensureUser());
     const derivedDistrict =
-      extractDistrictFromAddress(address) || baseUser.district || "Москва";
-
-    const user: User = {
-      ...(baseUser as User),
-      id: userId,
-      telegramId: baseUser.telegramId ?? telegramId,
-      name: userName,
-      city: city || baseUser.city || "Москва",
+      extractDistrictFromAddress(address) || base.district || "Москва";
+    const updated: User = {
+      ...base,
+      name: userName.trim() || base.name,
+      city: city || base.city || "Москва",
       district: derivedDistrict,
-      address: address || baseUser.address,
-      lat: lat ?? baseUser.lat,
-      lng: lng ?? baseUser.lng,
-      experienceYears: parseInt(experienceYears) || 2,
+      address: address || base.address,
+      lat: lat ?? base.lat,
+      lng: lng ?? base.lng,
+      experienceYears: parseInt(experienceYears) || base.experienceYears || 2,
       helpStatus,
-      rating: baseUser.rating ?? 0,
-      createdAt: baseUser.createdAt ?? new Date().toISOString(),
     };
 
     if (address) {
       try {
         await AsyncStorage.setItem("@pernatye_address", address);
       } catch {
-        // ignore — адрес — вспомогательное поле
+        // ignore — адрес вспомогательное поле
       }
     }
 
-    await setCurrentUser(user);
-
-    // Если пользователь оставил незакоммиченное имя в форме — досохраняем.
-    const birdsToSave = [...addedBirds];
-    if (showBirdForm && birdName.trim()) {
-      birdsToSave.push({ species: selectedSpecies, name: birdName.trim() });
-    }
-
-    // Карточка ухода (food/schedule/...) применяется ко всем добавленным
-    // птицам. Если птиц нет — этот шаг просто пропускается, пользователь
-    // сможет добавить птиц позже на вкладке «Птицы».
-    for (const b of birdsToSave) {
-      const birdId =
-        Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      const bird: Bird = {
-        id: birdId,
-        userId,
-        species: b.species,
-        name: b.name,
-        ageMonths: undefined,
-        food: food || "Специальный корм для вида",
-        schedule: schedule || "Кормить утром и вечером",
-        diseases: diseases ? diseases.split(",").map((d) => d.trim()) : [],
-        medications: medications || "",
-        catchNotes: catchNotes || "",
-        vetNotes: vetNotes || "",
-        sitLocation,
-        createdAt: new Date().toISOString(),
-      };
-      await addBird(bird);
-    }
-
+    await setCurrentUser(updated);
     await completeOnboarding();
     router.replace("/(tabs)/map");
-  };
-
-  const handleAddBird = () => {
-    const trimmed = birdName.trim();
-    if (!trimmed) return;
-    setAddedBirds((prev) => [
-      ...prev,
-      { species: selectedSpecies, name: trimmed },
-    ]);
-    setBirdName("");
-    setSelectedSpecies("parrot_budgie");
-    setShowBirdForm(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const handleRemoveBird = (index: number) => {
-    setAddedBirds((prev) => prev.filter((_, i) => i !== index));
-    Haptics.selectionAsync();
   };
 
   const progressWidth = progressAnim.interpolate({
@@ -257,7 +186,6 @@ export default function OnboardingScreen() {
     { key: "welcome" },
     { key: "auth" },
     { key: "bird" },
-    { key: "care" },
     { key: "profile" },
     { key: "map" },
   ];
@@ -327,7 +255,7 @@ export default function OnboardingScreen() {
             <View style={styles.tgNote}>
               <Feather name="shield" size={14} color={colors.primary} />
               <Text style={[styles.tgNoteText, { color: colors.mutedForeground }]}>
-                {" "}Данные защищены и не передаются третьим лицам
+                {" "}По username соседи напишут вам в Telegram
               </Text>
             </View>
           </View>
@@ -339,7 +267,6 @@ export default function OnboardingScreen() {
             style={{ width }}
             contentContainerStyle={{ width, paddingTop: topPad + 20, paddingHorizontal: 24, paddingBottom: 24, alignItems: "center", flexGrow: 1 }}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
           >
             <Text style={[styles.stepTitle, { color: colors.foreground }]}>
               Мои птицы
@@ -348,17 +275,21 @@ export default function OnboardingScreen() {
               Добавьте птиц или пропустите — это можно сделать позже
             </Text>
 
-            {addedBirds.length > 0 && (
+            {birds.length > 0 && (
               <View style={{ width: "100%", marginBottom: 12 }}>
-                {addedBirds.map((b, i) => (
+                {birds.map((b) => (
                   <View
-                    key={`${b.name}-${i}`}
+                    key={b.id}
                     style={[
                       styles.birdCard,
                       { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
                   >
-                    <BirdSpeciesIcon species={b.species} size={36} />
+                    {b.photoUrl ? (
+                      <Image source={{ uri: b.photoUrl }} style={styles.birdCardPhoto} />
+                    ) : (
+                      <BirdSpeciesIcon species={b.species} size={36} />
+                    )}
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text
                         style={{
@@ -381,7 +312,7 @@ export default function OnboardingScreen() {
                       </Text>
                     </View>
                     <TouchableOpacity
-                      onPress={() => handleRemoveBird(i)}
+                      onPress={() => deleteBird(b.id)}
                       style={styles.birdCardRemove}
                       hitSlop={8}
                     >
@@ -392,198 +323,37 @@ export default function OnboardingScreen() {
               </View>
             )}
 
-            {showBirdForm ? (
-              <>
-                <View style={styles.speciesGrid}>
-                  {SPECIES_LIST.map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[
-                        styles.speciesBtn,
-                        {
-                          backgroundColor:
-                            selectedSpecies === s ? colors.primary : colors.card,
-                          borderColor:
-                            selectedSpecies === s ? colors.primary : colors.border,
-                        },
-                      ]}
-                      onPress={() => {
-                        setSelectedSpecies(s);
-                        Haptics.selectionAsync();
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <BirdSpeciesIcon species={s} size={32} />
-                      <Text
-                        style={[
-                          styles.speciesBtnLabel,
-                          {
-                            color:
-                              selectedSpecies === s
-                                ? "#fff"
-                                : colors.foreground,
-                          },
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {SPECIES_LABELS[s]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TextInput
-                  style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-                  placeholder="Имя птицы"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={birdName}
-                  onChangeText={setBirdName}
-                />
-                <TouchableOpacity
-                  style={{
-                    alignSelf: "stretch",
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    alignItems: "center",
-                    marginTop: 8,
-                    backgroundColor: birdName.trim()
-                      ? colors.primary
-                      : colors.secondary,
-                  }}
-                  onPress={handleAddBird}
-                  activeOpacity={0.85}
-                  disabled={!birdName.trim()}
-                >
-                  <Text
-                    style={{
-                      color: birdName.trim() ? "#fff" : colors.mutedForeground,
-                      fontFamily: "Inter_600SemiBold",
-                      fontSize: 15,
-                    }}
-                  >
-                    Добавить птицу
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity
+            <TouchableOpacity
+              style={{
+                alignSelf: "stretch",
+                paddingVertical: 14,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderStyle: "dashed",
+                borderColor: colors.primary,
+                alignItems: "center",
+                marginTop: 4,
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 6,
+              }}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/add-bird");
+              }}
+              activeOpacity={0.85}
+            >
+              <Feather name="plus" size={18} color={colors.primary} />
+              <Text
                 style={{
-                  alignSelf: "stretch",
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderStyle: "dashed",
-                  borderColor: colors.primary,
-                  alignItems: "center",
-                  marginTop: 4,
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  gap: 6,
+                  color: colors.primary,
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 15,
                 }}
-                onPress={() => {
-                  setShowBirdForm(true);
-                  Haptics.selectionAsync();
-                }}
-                activeOpacity={0.85}
               >
-                <Feather name="plus" size={18} color={colors.primary} />
-                <Text
-                  style={{
-                    color: colors.primary,
-                    fontFamily: "Inter_600SemiBold",
-                    fontSize: 15,
-                  }}
-                >
-                  Добавить ещё птицу
-                </Text>
-              </TouchableOpacity>
-            )}
-          </ScrollView>
-        );
-
-      case "care":
-        return (
-          <ScrollView
-            style={{ width }}
-            contentContainerStyle={{ width, paddingTop: topPad + 20, paddingHorizontal: 24, paddingBottom: 24, alignItems: "center", flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text style={[styles.stepTitle, { color: colors.foreground }]}>
-              Карточка ухода
-            </Text>
-            <Text style={[styles.stepDesc, { color: colors.mutedForeground }]}>
-              Эту информацию прочитает тот, кто будет присматривать
-            </Text>
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Чем кормить (корм, порция)"
-              placeholderTextColor={colors.mutedForeground}
-              value={food}
-              onChangeText={setFood}
-            />
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Режим дня (сон, активность)"
-              placeholderTextColor={colors.mutedForeground}
-              value={schedule}
-              onChangeText={setSchedule}
-            />
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Болезни через запятую"
-              placeholderTextColor={colors.mutedForeground}
-              value={diseases}
-              onChangeText={setDiseases}
-            />
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card }]}
-              placeholder="Особенности ловли (если летает)"
-              placeholderTextColor={colors.mutedForeground}
-              value={catchNotes}
-              onChangeText={setCatchNotes}
-            />
-            <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 4 }]}>
-              Где удобнее оставлять птицу
-            </Text>
-            <View style={styles.sitLocationCol}>
-              {SIT_LOCATIONS.map((loc) => {
-                const active = sitLocation === loc;
-                return (
-                  <TouchableOpacity
-                    key={loc}
-                    style={[
-                      styles.sitLocBtn,
-                      {
-                        backgroundColor: active ? colors.primary : colors.card,
-                        borderColor: active ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => {
-                      setSitLocation(loc);
-                      Haptics.selectionAsync();
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Feather
-                      name={SIT_LOCATION_ICONS[loc] as any}
-                      size={16}
-                      color={active ? "#fff" : colors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.sitLocBtnLabel,
-                        { color: active ? "#fff" : colors.foreground },
-                      ]}
-                    >
-                      {SIT_LOCATION_LABELS[loc]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              Ветеринара и справки можно добавить позже в карточке птицы
-            </Text>
+                {birds.length > 0 ? "Добавить ещё птицу" : "Добавить птицу"}
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
         );
 
@@ -741,7 +511,9 @@ export default function OnboardingScreen() {
                   textAlign: "center",
                 }}
               >
-                20 птичников в Москве
+                {neighbors.length > 0
+                  ? `${neighbors.length} птичников уже в сообществе`
+                  : "Стань одним из первых птичников"}
               </Text>
               <Text
                 style={{
@@ -752,7 +524,9 @@ export default function OnboardingScreen() {
                   paddingHorizontal: 32,
                 }}
               >
-                После регистрации ты увидишь их на карте
+                {neighbors.length > 0
+                  ? "После регистрации ты увидишь их на карте"
+                  : "Скоро рядом появятся соседи — и ты поможешь им первым"}
               </Text>
             </View>
           </View>
@@ -770,7 +544,7 @@ export default function OnboardingScreen() {
       ? "Начать"
       : "Далее";
 
-  // Шаги 2 (Птицы), 3 (Карточка ухода) и 4 (Профиль) — все опциональны.
+  // Шаги 2 (Птицы) и 3 (Профиль) — опциональны, можно пропустить.
   const canSkip = step >= 2 && step < totalSteps - 1;
 
   return (
@@ -802,13 +576,6 @@ export default function OnboardingScreen() {
         {canSkip && (
           <TouchableOpacity
             onPress={() => {
-              // На шаге птиц «Пропустить» означает «не добавлять никаких
-              // птиц» — чистим незакоммиченное имя, чтобы finish() его
-              // не досохранил.
-              if (step === 2) {
-                setBirdName("");
-                setShowBirdForm(false);
-              }
               goNext();
             }}
             style={styles.skipBtn}
@@ -919,6 +686,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 8,
+  },
+  birdCardPhoto: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
   },
   birdCardRemove: {
     width: 32,

@@ -27,11 +27,12 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding/index" options={{ headerShown: false, animation: "fade" }} />
       <Stack.Screen name="neighbor/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="review/[id]" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="bird/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="add-bird" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="new-request" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="neighbors" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="sit-requests" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="guides" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="article/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="settings" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="edit-profile" options={{ headerShown: false, animation: "slide_from_right" }} />

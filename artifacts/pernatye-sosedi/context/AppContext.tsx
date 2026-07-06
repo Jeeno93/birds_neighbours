@@ -99,6 +99,7 @@ export interface User {
   experienceYears: number;
   helpStatus: HelpStatus;
   rating: number;
+  reviewsCount?: number;
   otherPets?: OtherPet[];
   sitTypes?: SitType[];
   capabilities?: SitterCapability[];
@@ -148,12 +149,17 @@ interface AppContextType {
   isOnboarded: boolean;
   isLoading: boolean;
   setCurrentUser: (user: User) => void;
-  addBird: (bird: Bird) => void;
+  addBird: (bird: Bird, ownerId?: string) => void;
   updateBird: (id: string, data: Partial<Bird>) => void;
   deleteBird: (id: string) => void;
   addSitRequest: (request: SitRequest) => void;
   updateSitRequest: (id: string, data: Partial<SitRequest>) => void;
-  addReview: (review: Review) => void;
+  addReview: (input: {
+    toUserId: string;
+    rating: number;
+    tags: string[];
+    comment: string;
+  }) => Promise<void>;
   completeOnboarding: () => void;
   updateHelpStatus: (status: HelpStatus) => void;
   updateOtherPets: (pets: OtherPet[]) => void;
@@ -342,7 +348,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addBird = useCallback(
-    async (bird: Bird) => {
+    async (bird: Bird, ownerId?: string) => {
+      // ownerId можно передать явно — в онбординге `currentUser` в замыкании
+      // может быть ещё не обновлён (stale closure), из-за чего POST уходил бы
+      // без валидного x-user-id и птица не сохранялась на бэкенде.
+      const authorId = ownerId ?? currentUser?.id;
       try {
         // Бэкенд присваивает свой UUID; используем птицу из ответа,
         // чтобы локальный id совпадал с серверным и последующие
@@ -353,7 +363,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             method: "POST",
             body: JSON.stringify(bird),
           },
-          currentUser?.id
+          authorId
         );
         // Бэкенд не сохраняет клиентские поля (например, `attachments`
         // — фотографии лежат только локально), поэтому сливаем серверный
@@ -520,13 +530,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [currentUser?.id]
   );
 
-  const addReview = useCallback(async (review: Review) => {
-    setReviews((prev) => {
-      const next = [...prev, review];
-      AsyncStorage.setItem(STORAGE_KEYS.reviews, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+  const addReview = useCallback(
+    async (input: {
+      toUserId: string;
+      rating: number;
+      tags: string[];
+      comment: string;
+    }) => {
+      let saved: Review;
+      try {
+        // Бэкенд ставит from_user_id из x-user-id и пересчитывает рейтинг цели.
+        saved = await apiRequest<Review>(
+          "/api/reviews",
+          { method: "POST", body: JSON.stringify(input) },
+          currentUser?.id
+        );
+      } catch {
+        // API недоступен — сохраняем локально (рейтинг пересчитается на сервере позже).
+        saved = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+          fromUserId: currentUser?.id ?? "",
+          toUserId: input.toUserId,
+          tags: input.tags,
+          comment: input.comment,
+          createdAt: new Date().toISOString(),
+        };
+      }
+      setReviews((prev) => {
+        const next = [...prev, saved];
+        AsyncStorage.setItem(STORAGE_KEYS.reviews, JSON.stringify(next));
+        return next;
+      });
+    },
+    [currentUser?.id]
+  );
 
   const completeOnboarding = useCallback(async () => {
     setIsOnboarded(true);

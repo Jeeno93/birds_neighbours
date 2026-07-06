@@ -21,9 +21,9 @@ function NativeTabLayout() {
         <Icon sf={{ default: "bird", selected: "bird.fill" }} />
         <Label>Птицы</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="feed">
-        <Icon sf={{ default: "book", selected: "book.fill" }} />
-        <Label>Гайды</Label>
+      <NativeTabs.Trigger name="requests">
+        <Icon sf={{ default: "calendar", selected: "calendar" }} />
+        <Label>Запросы</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
@@ -96,14 +96,14 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="feed"
+        name="requests"
         options={{
-          title: "Гайды",
+          title: "Запросы",
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="book" tintColor={color} size={24} />
+              <SymbolView name="calendar" tintColor={color} size={24} />
             ) : (
-              <Feather name="book-open" size={22} color={color} />
+              <Feather name="calendar" size={22} color={color} />
             ),
         }}
       />

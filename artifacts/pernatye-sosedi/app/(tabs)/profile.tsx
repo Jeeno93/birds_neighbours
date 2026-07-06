@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { Href, router } from "expo-router";
 import React, { useState } from "react";
 import {
   Platform,
@@ -101,8 +101,6 @@ export default function ProfileScreen() {
     updateCapabilities(Array.from(next));
     Haptics.selectionAsync();
   };
-
-  const openSitRequests = () => router.push("/sit-requests");
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -329,30 +327,26 @@ export default function ProfileScreen() {
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Запросов</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statNum, { color: colors.primary }]}>0</Text>
+            <Text style={[styles.statNum, { color: colors.primary }]}>
+              {currentUser.reviewsCount ?? 0}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Отзывов</Text>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Запросы</Text>
           <TouchableOpacity
-            style={[styles.requestBtn, { backgroundColor: colors.primary }]}
-            onPress={openSitRequests}
+            style={[styles.linkRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push("/guides" as Href)}
             activeOpacity={0.8}
           >
-            <Feather name="calendar" size={16} color="#fff" />
-            <Text style={styles.requestBtnText}>Мои запросы на присмотр</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.newRequestBtn, { borderColor: colors.primary }]}
-            onPress={() => router.push("/new-request")}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={16} color={colors.primary} />
-            <Text style={[styles.newRequestBtnText, { color: colors.primary }]}>
-              Создать новый запрос
+            <View style={[styles.linkIcon, { backgroundColor: colors.secondary }]}>
+              <Feather name="book-open" size={16} color={colors.primary} />
+            </View>
+            <Text style={[styles.linkRowText, { color: colors.foreground }]}>
+              Гайды по уходу за птицами
             </Text>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -454,6 +448,22 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
   section: { gap: 10 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  linkIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  linkRowText: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
   requestBtn: {
     flexDirection: "row",
     alignItems: "center",

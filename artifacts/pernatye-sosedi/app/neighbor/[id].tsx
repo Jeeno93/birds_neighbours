@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { Href, router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -41,7 +41,7 @@ export default function NeighborProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { neighbors } = useApp();
+  const { neighbors, currentUser } = useApp();
 
   // Если сосед уже в кэше списка соседей — рендерим его сразу.
   // Иначе подгружаем профиль через GET /api/users/:id.
@@ -116,6 +116,34 @@ export default function NeighborProfileScreen() {
       cancelled = true;
     };
   }, [id, cached]);
+
+  // При возврате на экран (например, после отправки отзыва) — перечитываем
+  // отзывы и профиль соседа, чтобы обновились список и агрегированный рейтинг.
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          const rev = await apiRequest<Review[]>(
+            `/api/reviews?toUserId=${encodeURIComponent(id)}`
+          );
+          if (!cancelled && Array.isArray(rev)) setUserReviews(rev);
+        } catch {
+          /* ignore */
+        }
+        try {
+          const usr = await apiRequest<User>(`/api/users/${id}`);
+          if (!cancelled && usr?.id) setNeighbor(usr);
+        } catch {
+          /* ignore */
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [id])
+  );
 
   const topPad = Platform.OS === "web" ? insets.top + 67 : insets.top;
 
@@ -327,9 +355,27 @@ export default function NeighborProfileScreen() {
         )}
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Отзывы ({userReviews.length})
-          </Text>
+          <View style={styles.reviewsHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              Отзывы ({userReviews.length})
+            </Text>
+            {currentUser && id && id !== currentUser.id && (
+              <TouchableOpacity
+                style={[styles.leaveReviewBtn, { borderColor: colors.primary }]}
+                onPress={() =>
+                  router.push(
+                    `/review/${id}?name=${encodeURIComponent(neighbor?.name ?? "")}` as Href
+                  )
+                }
+                activeOpacity={0.8}
+              >
+                <Feather name="edit-3" size={13} color={colors.primary} />
+                <Text style={[styles.leaveReviewText, { color: colors.primary }]}>
+                  {" "}Оставить
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {userReviews.length === 0 ? (
             <View style={[styles.emptyReviews, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Feather name="message-circle" size={28} color={colors.mutedForeground} />
@@ -491,6 +537,20 @@ const styles = StyleSheet.create({
   tgBtnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  reviewsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  leaveReviewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  leaveReviewText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   birdRow: {
     flexDirection: "row",
     alignItems: "center",

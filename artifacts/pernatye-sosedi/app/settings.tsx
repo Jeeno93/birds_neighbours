@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { Href, router } from "expo-router";
 import React from "react";
 import {
   Alert,
@@ -60,7 +60,14 @@ export default function SettingsScreen() {
     {
       icon: "shield",
       title: "Конфиденциальность",
-      onPress: () => Alert.alert("Конфиденциальность", "Ваши данные хранятся только на вашем устройстве и не передаются третьим лицам."),
+      onPress: () => Alert.alert("Конфиденциальность", "Ваш профиль, птицы и запросы видны участникам сообщества, чтобы вы могли находить друг друга. Данные хранятся на нашем сервере и не продаются третьим лицам. Контакт для связи — ваш Telegram-username."),
+    },
+    {
+      icon: "file-text",
+      title: "Пользовательское соглашение",
+      // Каст: типы роутов expo-router (.expo/types) регенерируются dev-сервером;
+      // локально файл agreement.tsx уже создан, роут валиден в рантайме.
+      onPress: () => router.push("/agreement" as Href),
     },
     {
       icon: "help-circle",

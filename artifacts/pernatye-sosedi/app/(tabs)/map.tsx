@@ -553,6 +553,26 @@ export default function MapScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {!isLayerEmpty && !selectedRequest && (
+          <TouchableOpacity
+            style={[
+              styles.needSitterFab,
+              {
+                backgroundColor: colors.primary,
+                bottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
+              },
+            ]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/new-request");
+            }}
+            activeOpacity={0.85}
+          >
+            <Feather name="plus" size={18} color="#fff" />
+            <Text style={styles.needSitterFabText}>Нужна передержка?</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
     </View>
@@ -597,6 +617,22 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
   },
   mapContainer: { flex: 1 },
+  needSitterFab: {
+    position: "absolute",
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    borderRadius: 28,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  needSitterFabText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 },
   emptyOverlay: {
     position: "absolute",
     left: 16,

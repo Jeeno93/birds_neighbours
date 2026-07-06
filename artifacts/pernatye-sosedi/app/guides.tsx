@@ -71,7 +71,7 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-export default function FeedScreen() {
+export default function GuidesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -85,15 +85,17 @@ export default function FeedScreen() {
           { paddingTop: topPad + 8, backgroundColor: colors.headerBg, borderBottomColor: colors.border },
         ]}
       >
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Гайды
-        </Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Feather name="arrow-left" size={22} color={colors.foreground} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Гайды</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 16) + 60 },
+          { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 16) },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -154,14 +156,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
+    gap: 8,
   },
   headerTitle: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
+    flex: 1,
+    fontSize: 17,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
   },
+  backBtn: { padding: 4 },
   content: { padding: 16, gap: 12 },
   featuredCard: {
     borderRadius: 18,
