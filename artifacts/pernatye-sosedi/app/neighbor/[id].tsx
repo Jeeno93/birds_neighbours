@@ -237,6 +237,12 @@ export default function NeighborProfileScreen() {
             </View>
           ) : null}
           <View style={styles.row}>
+            <Feather name="shield" size={12} color={colors.mutedForeground} />
+            <Text style={[styles.locationNote, { color: colors.mutedForeground }]}>
+              {" "}Точный адрес — по договорённости в Telegram
+            </Text>
+          </View>
+          <View style={styles.row}>
             <Feather name="award" size={14} color={colors.mutedForeground} />
             <Text style={[styles.sub, { color: colors.mutedForeground }]}>
               {" "}{neighbor.experienceYears} {neighbor.experienceYears === 1 ? "год" : neighbor.experienceYears < 5 ? "года" : "лет"} опыта
@@ -525,6 +531,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 22, fontFamily: "Inter_700Bold" },
   row: { flexDirection: "row", alignItems: "center" },
   sub: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  locationNote: { fontSize: 12, fontFamily: "Inter_400Regular" },
   tgBtn: {
     flexDirection: "row",
     alignItems: "center",

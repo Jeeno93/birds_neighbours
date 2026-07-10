@@ -260,6 +260,18 @@ export default function EditProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        <Text
+          style={{
+            color: colors.mutedForeground,
+            fontFamily: "Inter_400Regular",
+            fontSize: 12,
+            marginTop: 6,
+            lineHeight: 17,
+          }}
+        >
+          Точный адрес видите только вы. Соседям видно только примерное
+          местоположение — так им проще понять, что вы рядом.
+        </Text>
 
         <View
           style={{

@@ -34,6 +34,53 @@ function rowToUser(row: any) {
   };
 }
 
+// Стабильный хэш строки в 32-битное число — используем как seed, чтобы
+// размытие координат было детерминированным (маркер не прыгает между
+// запросами), но непредсказуемым без знания id пользователя.
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
+// Домашний адрес — чувствительные данные (приложение сводит незнакомцев
+// для передачи питомца физически). Чужим пользователям точный адрес и
+// точные координаты никогда не отдаём: адрес показываем не точнее района/
+// города, а координаты сдвигаем детерминированным случайным офсетом
+// 250–600м — этого достаточно, чтобы понять «сосед рядом», но не найти дом.
+function fuzzCoords(lat: number, lng: number, seedKey: string): { lat: number; lng: number } {
+  const seed = hashString(seedKey);
+  const angle = (seed % 360) * (Math.PI / 180);
+  const distanceMeters = 250 + (seed % 350);
+  const dLat = (distanceMeters * Math.cos(angle)) / 111320;
+  const dLng =
+    (distanceMeters * Math.sin(angle)) / (111320 * Math.cos((lat * Math.PI) / 180));
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
+// Публичное представление пользователя — то, что видят ДРУГИЕ участники
+// (список соседей, карта, чужой профиль). Без точного адреса, без
+// addressComment (домофон/подъезд — приватная деталь для ситтера) и с
+// размытыми координатами. Точные данные отдаём только владельцу профиля
+// (POST /auth, PUT /:id, GET /:id когда id совпадает с x-user-id).
+function rowToPublicUser(row: any) {
+  const full = rowToUser(row);
+  if (!full) return null;
+  const { address, addressComment, lat, lng, ...safe } = full;
+  const fuzzed =
+    typeof lat === "number" && typeof lng === "number"
+      ? fuzzCoords(lat, lng, full.id)
+      : { lat, lng };
+  return {
+    ...safe,
+    address: null,
+    lat: fuzzed.lat,
+    lng: fuzzed.lng,
+  };
+}
+
 // POST /api/users/auth — find-or-create by telegramId
 router.post("/auth", async (req: Request, res: Response) => {
   try {
@@ -79,7 +126,8 @@ router.get("/", async (req: Request, res: Response) => {
       `SELECT * FROM users WHERE ${where} ORDER BY rating DESC, reviews_count DESC`,
       params
     );
-    res.json(result.rows.map(rowToUser));
+    // Список всегда "чужой" ракурс (карта/соседи) — точный адрес и координаты не отдаём.
+    res.json(result.rows.map(rowToPublicUser));
   } catch (err) {
     console.error("GET /api/users error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -94,7 +142,12 @@ router.get("/:id", async (req: Request, res: Response) => {
       res.status(404).json({ error: "User not found" });
       return;
     }
-    res.json(rowToUser(result.rows[0]));
+    // Точные адрес/координаты отдаём только владельцу профиля — сверяем
+    // x-user-id с запрошенным :id. Заголовок не криптографически защищён,
+    // но это не хуже остальной модели авторизации приложения; здесь важно,
+    // чтобы обычный просмотр чужого профиля никогда не получал точные данные.
+    const isSelf = req.headers["x-user-id"] === req.params.id;
+    res.json(isSelf ? rowToUser(result.rows[0]) : rowToPublicUser(result.rows[0]));
   } catch (err) {
     console.error("GET /api/users/:id error:", err);
     res.status(500).json({ error: "Internal server error" });
